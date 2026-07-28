@@ -164,7 +164,11 @@ model Automation {
   matchAnyPost   Boolean @default(false)
   keywords       String[]
   matchAnyWord   Boolean @default(false)
+  // dmMessage is the primary reply text (kept for back-compat and as the
+  // legacy single field). dmMessages holds all variants; one is picked at
+  // random per send. When dmMessages is empty, dmMessage is used.
   dmMessage      String
+  dmMessages     String[] @default([])
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?

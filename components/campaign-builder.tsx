@@ -12,7 +12,7 @@
  * follow / email / follow-up steps arrive in later turns.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
@@ -39,6 +39,7 @@ interface LoadedCampaign {
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
+  dmMessages: string[];
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
@@ -155,7 +156,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [usedPosts, setUsedPosts] = useState<Record<string, string>>({});
 
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
-  const [keywordText, setKeywordText] = useState("");
+  // Committed keywords render as pills; keywordInput is the in-progress entry
+  // that becomes a pill on Enter / comma / blur.
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
   const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
@@ -164,7 +168,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [openingDmMessage, setOpeningDmMessage] = useState("");
   const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
 
-  const [dmMessage, setDmMessage] = useState("");
+  const [dmMessages, setDmMessages] = useState<string[]>([""]);
   const [linkOpen, setLinkOpen] = useState(false);
   const [trackedDestinationUrl, setTrackedDestinationUrl] = useState("");
   const [linkButtonLabel, setLinkButtonLabel] = useState("Open link");
@@ -176,14 +180,21 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [importQueue, setImportQueue] = useState<ImportRow[] | null>(null);
   const [importTotal, setImportTotal] = useState(0);
 
-  const keywords = useMemo(
-    () =>
-      keywordText
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean),
-    [keywordText]
-  );
+  // Fold the current input (which may itself be comma-separated) into the
+  // committed keyword list, skipping blanks and case-insensitive duplicates.
+  const mergeKeywords = (existing: string[], raw: string): string[] => {
+    const next = [...existing];
+    for (const part of raw.split(",").map((k) => k.trim()).filter(Boolean)) {
+      if (!next.some((k) => k.toLowerCase() === part.toLowerCase())) next.push(part);
+    }
+    return next;
+  };
+
+  function commitKeywordInput() {
+    if (!keywordInput.trim()) return;
+    setKeywords((prev) => mergeKeywords(prev, keywordInput));
+    setKeywordInput("");
+  }
 
   // Fetch the connected account's real avatar for the preview (cache-first so
   // it shows instantly on a return visit instead of a blank circle).
@@ -246,7 +257,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setPostId(c.postId);
         setPostUrl(c.postUrl);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
-        setKeywordText(c.keywords.join(", "));
+        setKeywords(c.keywords);
+        setKeywordInput("");
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
           c.publicReplyMessages?.length
@@ -258,7 +270,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
         setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
-        setDmMessage(c.dmMessage);
+        setDmMessages(
+          c.dmMessages?.length
+            ? c.dmMessages
+            : c.dmMessage
+              ? [c.dmMessage]
+              : [""]
+        );
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
         const link = c.trackedLinks?.[0]?.destinationUrl ?? "";
@@ -304,8 +322,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setPostThumb(null);
     setPostCaption("");
     setMatchMode("specific");
-    setKeywordText((row.keywords ?? []).join(", "));
-    setDmMessage(row.dmMessage ?? "");
+    setKeywords(row.keywords ?? []);
+    setKeywordInput("");
+    setDmMessages(row.dmMessage ? [row.dmMessage] : [""]);
     setPublicReplyEnabled(Boolean(row.publicReply));
     setPublicReplyMessages(row.publicReply ? [row.publicReply] : [""]);
     const hasOpening = Boolean(row.openingDmMessage);
@@ -356,22 +375,37 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }
 
   function ensureLinkToken() {
-    setDmMessage((cur) => (cur.includes("{link}") ? cur : `${cur.trim()} {link}`.trim()));
+    // Make sure every non-empty variant carries {link}, since any of them may
+    // be the one picked at send time.
+    setDmMessages((prev) =>
+      prev.map((m) =>
+        !m.trim() || m.includes("{link}") ? m : `${m.trim()} {link}`.trim()
+      )
+    );
   }
 
   async function handleSubmit(activeValue: boolean) {
     setError(null);
 
+    // Fold any keyword still sitting in the input into the committed list so a
+    // user who typed a word but didn't press Enter doesn't lose it.
+    const finalKeywords = mergeKeywords(keywords, keywordInput);
+    if (keywordInput.trim()) {
+      setKeywords(finalKeywords);
+      setKeywordInput("");
+    }
+    const dmVariants = dmMessages.map((m) => m.trim()).filter(Boolean);
+
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
     if (!isDmAutoresponder && triggerScope === "specific" && !postId)
       return setError("Pick a post or reel to trigger the campaign.");
-    if (matchMode === "specific" && keywords.length === 0)
+    if (matchMode === "specific" && finalKeywords.length === 0)
       return setError(
         isDmAutoresponder
           ? "Add at least one keyword, or reply to any message."
           : "Add at least one keyword, or switch to any word."
       );
-    if (!dmMessage.trim()) return setError("Add the DM with the link.");
+    if (dmVariants.length === 0) return setError("Add the DM with the link.");
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
 
@@ -388,8 +422,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       matchAnyPost: !isDmAutoresponder && triggerScope === "any",
       pendingNextReel: !isDmAutoresponder && triggerScope === "next",
       matchAnyWord: matchMode === "any",
-      keywords: matchMode === "any" ? [] : keywords,
-      dmMessage,
+      keywords: matchMode === "any" ? [] : finalKeywords,
+      dmMessage: dmVariants[0],
+      dmMessages: dmVariants,
       openingDmEnabled: isDmAutoresponder ? false : openingDmEnabled,
       openingDmMessage:
         !isDmAutoresponder && openingDmEnabled ? openingDmMessage : null,
@@ -698,14 +733,51 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             a specific word or words
           </Radio>
           {matchMode === "specific" && (
-            <div className="space-y-1">
+            <div className="space-y-2">
               <input
-                value={keywordText}
-                onChange={(e) => setKeywordText(e.target.value)}
+                value={keywordInput}
+                onChange={(e) => setKeywordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    commitKeywordInput();
+                  } else if (
+                    e.key === "Backspace" &&
+                    !keywordInput &&
+                    keywords.length > 0
+                  ) {
+                    setKeywords((prev) => prev.slice(0, -1));
+                  }
+                }}
+                onBlur={commitKeywordInput}
                 placeholder="Enter a word or multiple"
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
               />
-              <p className="text-xs text-muted">Use commas to separate words</p>
+              {keywords.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {keywords.map((kw, i) => (
+                    <span
+                      key={`${kw}-${i}`}
+                      className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground"
+                    >
+                      {kw}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setKeywords((prev) => prev.filter((_, idx) => idx !== i))
+                        }
+                        className="text-muted hover:text-error"
+                        aria-label={`Remove ${kw}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted">
+                Press Enter or comma to add each word
+              </p>
             </div>
           )}
           <Radio
@@ -813,14 +885,49 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         >
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">a DM with a link</span>
-            <textarea
-              value={dmMessage}
-              onChange={(e) => setDmMessage(e.target.value)}
-              placeholder="Write a message"
-              rows={3}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-              maxLength={1000}
-            />
+            {dmMessages.map((msg, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <textarea
+                  value={msg}
+                  onChange={(e) =>
+                    setDmMessages((prev) =>
+                      prev.map((m, idx) => (idx === i ? e.target.value : m))
+                    )
+                  }
+                  placeholder="Write a message"
+                  rows={3}
+                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
+                  maxLength={1000}
+                />
+                {dmMessages.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDmMessages((prev) => prev.filter((_, idx) => idx !== i))
+                    }
+                    className="shrink-0 px-1 pt-2 text-muted hover:text-error"
+                    aria-label="Remove variant"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            {dmMessages.length < 10 && (
+              <button
+                type="button"
+                onClick={() => setDmMessages((prev) => [...prev, ""])}
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                + Add another variant
+              </button>
+            )}
+            {dmMessages.filter((m) => m.trim()).length > 1 && (
+              <p className="text-xs text-muted">
+                One is picked at random each time, so DMs don&apos;t look
+                identical.
+              </p>
+            )}
             {linkOpen ? (
               <div className="space-y-2">
                 <input
@@ -872,7 +979,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             openingDmEnabled={!isDmAutoresponder && openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
-            revealMessage={dmMessage}
+            revealMessage={dmMessages.find((m) => m.trim()) ?? ""}
             hasLink={Boolean(trackedDestinationUrl.trim())}
             linkButtonLabel={linkButtonLabel || "Open link"}
             inboundMessage={
