@@ -64,6 +64,13 @@ interface WebhookEntry {
     sender?: { id?: string };
     recipient?: { id?: string };
     postback?: { mid?: string; title?: string; payload?: string };
+    message?: {
+      mid?: string;
+      text?: string;
+      // True when the event echoes a message the account itself sent. These
+      // must be ignored or a DM auto-responder would reply to its own replies.
+      is_echo?: boolean;
+    };
   }>;
 }
 
@@ -72,6 +79,13 @@ export interface WebhookPostbackEvent {
   userId: string;
   payload: string;
   mid?: string;
+}
+
+export interface WebhookMessageEvent {
+  instagramAccountId: string;
+  senderId: string;
+  messageId: string;
+  messageText: string;
 }
 
 interface WebhookPayload {
@@ -146,6 +160,45 @@ export function parsePostbackEvents(
         userId,
         payload: postbackPayload,
         mid: messaging.postback?.mid,
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Parse inbound DM messages (someone messaging the connected account) out of a
+ * webhook payload. Used to trigger DM auto-responder campaigns. Skips echoes of
+ * the account's own outgoing messages, the account messaging itself, and
+ * text-less events (delivery/read receipts, attachment-only messages).
+ */
+export function parseMessageEvents(
+  payload: WebhookPayload
+): WebhookMessageEvent[] {
+  const events: WebhookMessageEvent[] = [];
+
+  if (payload.object !== "instagram") return events;
+
+  for (const entry of payload.entry ?? []) {
+    for (const messaging of entry.messaging ?? []) {
+      const message = messaging.message;
+      if (!message || message.is_echo) continue;
+
+      const text = message.text;
+      const messageId = message.mid;
+      const senderId = messaging.sender?.id;
+      const accountId = entry.id ?? messaging.recipient?.id;
+
+      if (!text || !messageId || !senderId || !accountId) continue;
+      // Ignore echoes of the account's own actions.
+      if (senderId === accountId) continue;
+
+      events.push({
+        instagramAccountId: accountId,
+        senderId,
+        messageId,
+        messageText: text,
       });
     }
   }

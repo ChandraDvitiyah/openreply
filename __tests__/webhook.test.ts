@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { verifyWebhookSignature, parseCommentEvents } from "../lib/meta/webhook";
+import {
+  verifyWebhookSignature,
+  parseCommentEvents,
+  parseMessageEvents,
+} from "../lib/meta/webhook";
 import { createHmac } from "crypto";
 
 // Mock the environment variable
@@ -283,5 +287,141 @@ describe("parseCommentEvents", () => {
 
     const events = parseCommentEvents(payload);
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("parseMessageEvents", () => {
+  it("should parse a valid inbound DM", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "user_789" },
+              recipient: { id: "page_123" },
+              message: { mid: "mid_1", text: "send me the LINK" },
+            },
+          ],
+        },
+      ],
+    };
+
+    const events = parseMessageEvents(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual({
+      instagramAccountId: "page_123",
+      senderId: "user_789",
+      messageId: "mid_1",
+      messageText: "send me the LINK",
+    });
+  });
+
+  it("should ignore echoes of the account's own outgoing messages", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "page_123" },
+              recipient: { id: "user_789" },
+              message: { mid: "mid_1", text: "here is your link", is_echo: true },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseMessageEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore the account messaging itself", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "page_123" },
+              recipient: { id: "page_123" },
+              message: { mid: "mid_1", text: "hello" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseMessageEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore text-less events (read receipts, attachments)", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            { sender: { id: "user_789" }, recipient: { id: "page_123" } },
+            {
+              sender: { id: "user_789" },
+              recipient: { id: "page_123" },
+              message: { mid: "mid_2" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseMessageEvents(payload)).toHaveLength(0);
+  });
+
+  it("should not parse postback events as messages", () => {
+    const payload = {
+      object: "instagram",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "user_789" },
+              recipient: { id: "page_123" },
+              postback: { mid: "mid_1", payload: "reveal:auto_1" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseMessageEvents(payload)).toHaveLength(0);
+  });
+
+  it("should ignore non-instagram objects", () => {
+    const payload = {
+      object: "page",
+      entry: [
+        {
+          id: "page_123",
+          time: 1234567890,
+          messaging: [
+            {
+              sender: { id: "user_789" },
+              recipient: { id: "page_123" },
+              message: { mid: "mid_1", text: "hi" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseMessageEvents(payload)).toHaveLength(0);
   });
 });

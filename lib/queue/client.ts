@@ -43,9 +43,23 @@ export interface ProcessPostbackJob {
   mid?: string;
 }
 
-export type DmQueueJob = ProcessCommentJob | ProcessPostbackJob;
+// Delivered when someone sends the connected account a DM. A DM auto-responder
+// campaign matches its keywords against the message text and replies directly.
+export interface ProcessInboundDmJob {
+  instagramAccountId: string;
+  senderId: string;
+  messageId: string;
+  messageText: string;
+  requeueAttempt?: number;
+}
+
+export type DmQueueJob =
+  | ProcessCommentJob
+  | ProcessPostbackJob
+  | ProcessInboundDmJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
+export const INBOUND_DM_JOB_NAME = "process-inbound-dm";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 
