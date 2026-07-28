@@ -33,6 +33,11 @@ const createAutomationSchema = z
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
     dmMessage: z.string().min(1).max(1000),
+    dmMessages: z
+      .array(z.string().max(1000))
+      .max(10)
+      .optional()
+      .default([]),
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -87,6 +92,7 @@ const updateAutomationSchema = z.object({
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   matchAnyWord: z.boolean().optional(),
   dmMessage: z.string().min(1).max(1000).optional(),
+  dmMessages: z.array(z.string().max(1000)).max(10).optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -348,6 +354,17 @@ export async function POST(request: NextRequest) {
     .map((m) => m.trim())
     .filter(Boolean);
 
+  // Reply-DM variants. One is picked at random per send; the primary dmMessage
+  // stays in sync as the first variant for back-compat.
+  const dmList = (
+    parsed.data.dmMessages.length > 0
+      ? parsed.data.dmMessages
+      : [parsed.data.dmMessage]
+  )
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const primaryDmMessage = dmList[0] ?? parsed.data.dmMessage;
+
   const automation = await prisma.automation.create({
     data: {
       type: parsed.data.type,
@@ -360,7 +377,8 @@ export async function POST(request: NextRequest) {
       matchAnyPost,
       keywords: matchAnyWord ? [] : parsed.data.keywords,
       matchAnyWord,
-      dmMessage: parsed.data.dmMessage,
+      dmMessage: primaryDmMessage,
+      dmMessages: dmList,
       openingDmEnabled,
       openingDmMessage: openingDmEnabled
         ? parsed.data.openingDmMessage || null
@@ -483,6 +501,15 @@ export async function PATCH(request: NextRequest) {
     automationData.postId = null;
     automationData.postUrl = null;
   }
+  // Keep the reply-DM variations list and the legacy single field in sync.
+  if (automationData.dmMessages !== undefined) {
+    const list = automationData.dmMessages
+      .map((m) => m.trim())
+      .filter(Boolean);
+    automationData.dmMessages = list;
+    if (list[0]) automationData.dmMessage = list[0];
+  }
+
   // Keep the public-reply variations list and the legacy single field in sync.
   if (automationData.publicReplyMessages !== undefined) {
     const list = automationData.publicReplyMessages

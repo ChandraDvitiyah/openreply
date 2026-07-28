@@ -45,6 +45,19 @@ function formatError(error: unknown): string {
   return "Unknown error";
 }
 
+/**
+ * Pick one reply-DM variant at random. Falls back to the legacy single
+ * dmMessage when no variants are stored, mirroring the public-reply pool.
+ */
+function pickDmMessage(automation: {
+  dmMessage: string;
+  dmMessages?: string[] | null;
+}): string {
+  const pool = (automation.dmMessages ?? []).filter((m) => m.trim().length > 0);
+  if (pool.length === 0) return automation.dmMessage;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
   const {
     instagramAccountId,
@@ -357,6 +370,10 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       Boolean(automation.openingDmMessage) &&
       Boolean(automation.openingDmButtonLabel);
 
+    // Pick one reply-DM variant for this send; reused across the button and
+    // fallback paths so the logged/sent message stays consistent.
+    const dmMessageText = pickDmMessage(automation);
+
     try {
       if (useOpeningDm) {
         const openingText = renderMessageWithTracking({
@@ -376,7 +393,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         // Try button template first; if Meta rejects it, fall back to inline link.
         const bodyText =
           renderMessageWithoutLink({
-            message: automation.dmMessage,
+            message: dmMessageText,
             commenterName,
           }) || "Here's your link:";
         const trackedUrl = buildTrackedUrl(automation.trackedLinks[0].slug);
@@ -398,7 +415,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           );
           const fallbackMessage =
             renderMessageWithTracking({
-              message: automation.dmMessage,
+              message: dmMessageText,
               commenterName,
               trackedLinks: [automation.trackedLinks[0]],
             }) || `${bodyText}\n${trackedUrl}`;
@@ -411,7 +428,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         }
       } else {
         const dmMessage = renderMessageWithTracking({
-          message: automation.dmMessage,
+          message: dmMessageText,
           commenterName,
           trackedLinks: automation.trackedLinks,
         });
@@ -533,12 +550,16 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   const primaryLink = automation.trackedLinks[0];
 
+  // Pick one reply-DM variant for this send; reused across the button and
+  // fallback paths so the delivered message stays consistent.
+  const dmMessageText = pickDmMessage(automation);
+
   try {
     if (primaryLink) {
       // Try button template first; if Meta rejects it, fall back to inline link.
       const bodyText =
         renderMessageWithoutLink({
-          message: automation.dmMessage,
+          message: dmMessageText,
           commenterName,
         }) || "Here's your link:";
       const trackedUrl = buildTrackedUrl(primaryLink.slug);
@@ -560,7 +581,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
         );
         const fallbackMessage =
           renderMessageWithTracking({
-            message: automation.dmMessage,
+            message: dmMessageText,
             commenterName,
             trackedLinks: [primaryLink],
           }) || `${bodyText}\n${trackedUrl}`;
@@ -573,7 +594,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
       }
     } else {
       const revealMessage = renderMessageWithTracking({
-        message: automation.dmMessage,
+        message: dmMessageText,
         commenterName,
         trackedLinks: automation.trackedLinks,
       });
@@ -779,12 +800,16 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
 
     const primaryLink = automation.trackedLinks[0];
 
+    // Pick one reply-DM variant for this send; reused across the button and
+    // fallback paths so the delivered message stays consistent.
+    const dmMessageText = pickDmMessage(automation);
+
     try {
       if (primaryLink) {
         // Try button template first; if Meta rejects it, fall back to inline link.
         const bodyText =
           renderMessageWithoutLink({
-            message: automation.dmMessage,
+            message: dmMessageText,
             commenterName: null,
           }) || "Here's your link:";
         const trackedUrl = buildTrackedUrl(primaryLink.slug);
@@ -805,7 +830,7 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
           );
           const fallbackMessage =
             renderMessageWithTracking({
-              message: automation.dmMessage,
+              message: dmMessageText,
               commenterName: null,
               trackedLinks: [primaryLink],
             }) || `${bodyText}\n${trackedUrl}`;
@@ -818,7 +843,7 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
         }
       } else {
         const replyMessage = renderMessageWithTracking({
-          message: automation.dmMessage,
+          message: dmMessageText,
           commenterName: null,
           trackedLinks: automation.trackedLinks,
         });
