@@ -4,6 +4,8 @@ const {
   mockPrisma,
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
+  mockSendDirectMessage,
+  mockSendDirectMessageWithLinkButton,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -17,6 +19,7 @@ const {
     },
     dmLog: {
       findUnique: vi.fn(),
+      create: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
     },
@@ -29,6 +32,8 @@ const {
   },
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
+  mockSendDirectMessage: vi.fn(),
+  mockSendDirectMessageWithLinkButton: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -45,8 +50,8 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: vi.fn(),
-  sendDirectMessage: vi.fn(),
-  sendDirectMessageWithLinkButton: vi.fn(),
+  sendDirectMessage: mockSendDirectMessage,
+  sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
   sendCommentReply: vi.fn(),
   MetaApiError: class MetaApiError extends Error {
     code: number;
@@ -90,6 +95,7 @@ vi.mock("@/lib/queue/client", () => ({
   }),
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
+  INBOUND_DM_JOB_NAME: "process-inbound-dm",
 }));
 
 vi.mock("bullmq", () => {
@@ -173,6 +179,7 @@ beforeEach(() => {
 
   mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
+  mockPrisma.dmLog.create.mockResolvedValue({});
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockResolvedValue({});
   mockPrisma.instagramAccount.findUnique.mockResolvedValue({
@@ -206,6 +213,14 @@ beforeEach(() => {
     recipient_id: "commenter_999",
     message_id: "msg_002",
   });
+  mockSendDirectMessage.mockResolvedValue({
+    recipient_id: "dm_sender_1",
+    message_id: "msg_003",
+  });
+  mockSendDirectMessageWithLinkButton.mockResolvedValue({
+    recipient_id: "dm_sender_1",
+    message_id: "msg_004",
+  });
 });
 
 describe("DM Worker — Full Pipeline", () => {
@@ -216,6 +231,7 @@ describe("DM Worker — Full Pipeline", () => {
 
     expect(mockPrisma.automation.findMany).toHaveBeenCalledWith({
       where: {
+        type: "COMMENT_TO_DM",
         OR: [{ postId: "media_101" }, { matchAnyPost: true }],
         isActive: true,
         instagramAccount: { instagramId: "ig_456" },
@@ -340,7 +356,7 @@ describe("DM Worker — Full Pipeline", () => {
       }),
       expect.objectContaining({
         delay: 1800000,
-        jobId: "comment:ig_456:comment_555:retry:1",
+        jobId: "comment_ig_456_comment_555_retry_1",
       })
     );
   });
@@ -467,6 +483,143 @@ describe("DM Worker — Full Pipeline", () => {
       "Hey commenter_user! Here is the offer:",
       "Get offer",
       "http://localhost:3000/r/abc123"
+    );
+  });
+});
+
+describe("DM Worker — DM Auto-Responder", () => {
+  const inboundJobData = {
+    instagramAccountId: "ig_456",
+    senderId: "dm_sender_1",
+    messageId: "mid_abc",
+    messageText: "can I get the LINK?",
+  };
+
+  const autoresponder = {
+    ...mockAutomation,
+    type: "DM_AUTORESPONDER" as const,
+    postId: null,
+    matchAnyPost: false,
+    dmMessage: "Sure! Here you go: https://example.com",
+  };
+
+  function createInboundJob(data = inboundJobData) {
+    return {
+      data,
+      id: "job_dm_001",
+      name: "process-inbound-dm",
+      attemptsMade: 0,
+    };
+  }
+
+  function getInboundProcessor(): (job: ReturnType<typeof createInboundJob>) => Promise<void> {
+    createDMWorker();
+    return (global as Record<string, unknown>).__dmWorkerProcessor as (
+      job: ReturnType<typeof createInboundJob>
+    ) => Promise<void>;
+  }
+
+  beforeEach(() => {
+    mockPrisma.automation.findMany.mockResolvedValue([autoresponder]);
+  });
+
+  it("queries only DM_AUTORESPONDER campaigns and replies to the sender", async () => {
+    const processor = getInboundProcessor();
+    await processor(createInboundJob());
+
+    expect(mockPrisma.automation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: "DM_AUTORESPONDER",
+          isActive: true,
+          instagramAccount: { instagramId: "ig_456" },
+        }),
+      })
+    );
+    expect(mockMatchKeywords).toHaveBeenCalledWith(
+      "can I get the LINK?",
+      ["LINK", "PRICE"],
+      true
+    );
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "dm_sender_1",
+      "Sure! Here you go: https://example.com"
+    );
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          automationId_commentId: {
+            automationId: "auto_789",
+            commentId: "dm:mid_abc",
+          },
+        },
+        update: expect.objectContaining({ status: "SENT" }),
+      })
+    );
+  });
+
+  it("skips a message that was already responded to", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({
+      id: "existing",
+      status: "SENT",
+    });
+    const processor = getInboundProcessor();
+    await processor(createInboundJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
+  it("does not reply when keywords do not match", async () => {
+    mockMatchKeywords.mockReturnValue({ matched: false, matchedKeyword: null });
+    const processor = getInboundProcessor();
+    await processor(createInboundJob());
+
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
+  it("delivers a tracked link as a web_url button", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...autoresponder,
+        dmMessage: "Grab it here: {link}",
+        linkButtonLabel: "Open",
+        trackedLinks: [{ slug: "xyz789", destinationUrl: "https://example.com" }],
+      },
+    ]);
+    const processor = getInboundProcessor();
+    await processor(createInboundJob());
+
+    expect(mockSendDirectMessageWithLinkButton).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "dm_sender_1",
+      "Grab it here:",
+      "Open",
+      "http://localhost:3000/r/xyz789"
+    );
+  });
+
+  it("skips with SKIPPED_PLAN_LIMIT when the monthly limit is reached", async () => {
+    mockReserveWorkspaceDMSend.mockResolvedValue({
+      allowed: false,
+      reserved: false,
+      remaining: 0,
+      limit: 100,
+      periodStart: usagePeriodStart,
+    });
+    const processor = getInboundProcessor();
+    await processor(createInboundJob());
+
+    expect(mockReserveDMSlot).not.toHaveBeenCalled();
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockPrisma.dmLog.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ status: "SKIPPED_PLAN_LIMIT" }),
+      })
     );
   });
 });

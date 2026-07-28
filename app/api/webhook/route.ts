@@ -3,10 +3,11 @@ import { prisma } from "@/lib/db/client";
 import { getDMQueue } from "@/lib/queue/client";
 import {
   parseCommentEvents,
+  parseMessageEvents,
   parsePostbackEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
-import { POSTBACK_JOB_NAME } from "@/lib/queue/client";
+import { INBOUND_DM_JOB_NAME, POSTBACK_JOB_NAME } from "@/lib/queue/client";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -130,6 +131,31 @@ export async function POST(request: NextRequest) {
           jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
             event.mid ?? event.payload
           ).replace(/:/g, "_")}`,
+        }
+      );
+    }
+
+    // Inbound DMs → trigger DM auto-responder campaigns.
+    const messageEvents = parseMessageEvents(
+      payload as Parameters<typeof parseMessageEvents>[0]
+    );
+
+    for (const event of messageEvents) {
+      await queue.add(
+        INBOUND_DM_JOB_NAME,
+        {
+          instagramAccountId: event.instagramAccountId,
+          senderId: event.senderId,
+          messageId: event.messageId,
+          messageText: event.messageText,
+        },
+        {
+          // Deduplicate per inbound message so a redelivered webhook can't send
+          // the auto-reply twice. BullMQ forbids ":" in custom job ids.
+          jobId: `inbounddm_${event.instagramAccountId}_${event.messageId.replace(
+            /:/g,
+            "_"
+          )}`,
         }
       );
     }

@@ -149,6 +149,13 @@ model Automation {
   workspaceId        String
   instagramAccountId String
 
+  // Which kind of campaign this is. COMMENT_TO_DM (the default) fires when
+  // someone comments on a post; DM_AUTORESPONDER fires when someone sends the
+  // account a DM. The type decides which trigger fields below are meaningful:
+  // a DM auto-responder ignores post targeting / public replies / opening DMs
+  // and only uses keyword matching + the reply DM.
+  type           CampaignType @default(COMMENT_TO_DM)
+
   name           String
   goal           String?
   postId         String?
@@ -310,6 +317,11 @@ model OperationalEvent {
   @@index([source])
   @@index([level])
   @@index([createdAt])
+}
+
+enum CampaignType {
+  COMMENT_TO_DM
+  DM_AUTORESPONDER
 }
 
 enum WorkspaceRole {

@@ -18,6 +18,12 @@ export const dynamic = "force-dynamic";
 const createAutomationSchema = z
   .object({
     name: z.string().min(1).max(100),
+    // Which trigger this campaign uses. Defaults to the original comment-to-DM
+    // behaviour; DM_AUTORESPONDER replies to inbound DMs instead.
+    type: z
+      .enum(["COMMENT_TO_DM", "DM_AUTORESPONDER"])
+      .optional()
+      .default("COMMENT_TO_DM"),
     goal: z.string().min(1).max(120).optional().nullable(),
     instagramAccountId: z.string().min(1).optional().nullable(),
     postId: z.string().min(1).optional().nullable(),
@@ -46,9 +52,14 @@ const createAutomationSchema = z
     isActive: z.boolean().optional().default(true),
     wholeWordMatch: z.boolean().optional().default(true),
   })
-  // A campaign must target a specific post, any post, or the next reel.
+  // A comment-to-DM campaign must target a specific post, any post, or the next
+  // reel. DM auto-responders have no post trigger, so this rule doesn't apply.
   .refine(
-    (d) => d.matchAnyPost || d.pendingNextReel || Boolean(d.postId),
+    (d) =>
+      d.type === "DM_AUTORESPONDER" ||
+      d.matchAnyPost ||
+      d.pendingNextReel ||
+      Boolean(d.postId),
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
   // And it must match either specific words or any word.
@@ -67,6 +78,7 @@ const createAutomationSchema = z
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
+  type: z.enum(["COMMENT_TO_DM", "DM_AUTORESPONDER"]).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
@@ -315,10 +327,17 @@ export async function POST(request: NextRequest) {
 
   const { trackedDestinationUrl } = parsed.data;
 
-  const { pendingNextReel, matchAnyPost, matchAnyWord, openingDmEnabled } =
-    parsed.data;
+  const isDmAutoresponder = parsed.data.type === "DM_AUTORESPONDER";
+  const { matchAnyWord } = parsed.data;
+  // A DM auto-responder has no post trigger, public reply, or opening DM.
+  const pendingNextReel = isDmAutoresponder ? false : parsed.data.pendingNextReel;
+  const matchAnyPost = isDmAutoresponder ? false : parsed.data.matchAnyPost;
+  const openingDmEnabled = isDmAutoresponder ? false : parsed.data.openingDmEnabled;
+  const publicReplyEnabled = isDmAutoresponder
+    ? false
+    : parsed.data.publicReplyEnabled;
   // A post is only stored for the "specific post" trigger.
-  const isSpecificPost = !pendingNextReel && !matchAnyPost;
+  const isSpecificPost = !isDmAutoresponder && !pendingNextReel && !matchAnyPost;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -331,6 +350,7 @@ export async function POST(request: NextRequest) {
 
   const automation = await prisma.automation.create({
     data: {
+      type: parsed.data.type,
       name: parsed.data.name,
       goal: parsed.data.goal,
       // A next-reel campaign has no post yet; the cron binds it once a reel is posted.
@@ -349,11 +369,9 @@ export async function POST(request: NextRequest) {
         ? parsed.data.openingDmButtonLabel || null
         : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
-      publicReplyEnabled: parsed.data.publicReplyEnabled,
-      publicReplyMessages: parsed.data.publicReplyEnabled
-        ? publicReplyList
-        : [],
-      publicReplyMessage: parsed.data.publicReplyEnabled
+      publicReplyEnabled,
+      publicReplyMessages: publicReplyEnabled ? publicReplyList : [],
+      publicReplyMessage: publicReplyEnabled
         ? publicReplyList[0] ?? parsed.data.publicReplyMessage ?? null
         : null,
       isActive: parsed.data.isActive,
@@ -437,6 +455,21 @@ export async function PATCH(request: NextRequest) {
   }
 
   const { trackedDestinationUrl, ...automationData } = parsed.data;
+
+  // A DM auto-responder has no post trigger, public reply, or opening DM —
+  // clear those so a type switch can't leave stale comment-only config behind.
+  if (automationData.type === "DM_AUTORESPONDER") {
+    automationData.postId = null;
+    automationData.postUrl = null;
+    automationData.matchAnyPost = false;
+    automationData.pendingNextReel = false;
+    automationData.openingDmEnabled = false;
+    automationData.openingDmMessage = null;
+    automationData.openingDmButtonLabel = null;
+    automationData.publicReplyEnabled = false;
+    automationData.publicReplyMessages = [];
+    automationData.publicReplyMessage = null;
+  }
 
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.

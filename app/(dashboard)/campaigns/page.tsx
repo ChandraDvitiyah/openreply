@@ -14,6 +14,7 @@ import { readCache, writeCache } from "@/lib/client-cache";
 
 interface Campaign {
   id: string;
+  type: "COMMENT_TO_DM" | "DM_AUTORESPONDER";
   name: string;
   goal: string | null;
   postId: string | null;
@@ -226,6 +227,7 @@ export default function CampaignsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: `${auto.name} copy`,
+          type: auto.type,
           instagramAccountId: auto.instagramAccountId,
           postId: specific ? auto.postId : null,
           postUrl: specific ? auto.postUrl : null,
@@ -428,6 +430,11 @@ export default function CampaignsPage() {
                   >
                     {auto.isActive ? "Active" : "Paused"}
                   </span>
+                  {auto.type === "DM_AUTORESPONDER" && (
+                    <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                      DM auto-responder
+                    </span>
+                  )}
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
                       Waiting for next reel

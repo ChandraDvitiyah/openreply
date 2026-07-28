@@ -26,9 +26,11 @@ import {
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
+type CampaignType = "COMMENT_TO_DM" | "DM_AUTORESPONDER";
 
 interface LoadedCampaign {
   id: string;
+  type: CampaignType;
   name: string;
   postId: string | null;
   postUrl: string | null;
@@ -137,6 +139,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(true);
 
+  const [campaignType, setCampaignType] =
+    useState<CampaignType>("COMMENT_TO_DM");
+  const isDmAutoresponder = campaignType === "DM_AUTORESPONDER";
+
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
   const [postUrl, setPostUrl] = useState<string | null>(null);
@@ -232,6 +238,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         const c = (payload.data as LoadedCampaign[]).find((x) => x.id === campaignId);
         if (!c) return setNotFound(true);
         setName(c.name);
+        setCampaignType(c.type ?? "COMMENT_TO_DM");
         setSelectedAccountId(c.instagramAccountId);
         setTriggerScope(
           c.matchAnyPost ? "any" : c.pendingNextReel ? "next" : "specific"
@@ -356,10 +363,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setError(null);
 
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
-    if (triggerScope === "specific" && !postId)
+    if (!isDmAutoresponder && triggerScope === "specific" && !postId)
       return setError("Pick a post or reel to trigger the campaign.");
     if (matchMode === "specific" && keywords.length === 0)
-      return setError("Add at least one keyword, or switch to any word.");
+      return setError(
+        isDmAutoresponder
+          ? "Add at least one keyword, or reply to any message."
+          : "Add at least one keyword, or switch to any word."
+      );
     if (!dmMessage.trim()) return setError("Add the DM with the link.");
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
@@ -367,22 +378,28 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     setSaving(true);
 
     const payload = {
+      type: campaignType,
       name: name.trim() || `Campaign for @${username}`,
       instagramAccountId: selectedAccountId,
-      postId: triggerScope === "specific" ? postId : null,
-      postUrl: triggerScope === "specific" ? postUrl : null,
-      matchAnyPost: triggerScope === "any",
-      pendingNextReel: triggerScope === "next",
+      // A DM auto-responder has no post trigger, public reply, or opening DM;
+      // the server normalizes these too, but keep the payload coherent.
+      postId: !isDmAutoresponder && triggerScope === "specific" ? postId : null,
+      postUrl: !isDmAutoresponder && triggerScope === "specific" ? postUrl : null,
+      matchAnyPost: !isDmAutoresponder && triggerScope === "any",
+      pendingNextReel: !isDmAutoresponder && triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
       dmMessage,
-      openingDmEnabled,
-      openingDmMessage: openingDmEnabled ? openingDmMessage : null,
-      openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
-      publicReplyEnabled,
-      publicReplyMessages: publicReplyEnabled
-        ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
-        : [],
+      openingDmEnabled: isDmAutoresponder ? false : openingDmEnabled,
+      openingDmMessage:
+        !isDmAutoresponder && openingDmEnabled ? openingDmMessage : null,
+      openingDmButtonLabel:
+        !isDmAutoresponder && openingDmEnabled ? openingDmButtonLabel : null,
+      publicReplyEnabled: isDmAutoresponder ? false : publicReplyEnabled,
+      publicReplyMessages:
+        !isDmAutoresponder && publicReplyEnabled
+          ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
+          : [],
       trackedDestinationUrl: trackedDestinationUrl.trim() || "",
       linkButtonLabel: linkButtonLabel.trim() || "Open link",
       isActive: activeValue,
@@ -623,6 +640,22 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </div>
 
+        <Section title="Campaign type">
+          <Radio
+            checked={campaignType === "COMMENT_TO_DM"}
+            onSelect={() => setCampaignType("COMMENT_TO_DM")}
+          >
+            Comment → DM: reply when someone comments on a post
+          </Radio>
+          <Radio
+            checked={campaignType === "DM_AUTORESPONDER"}
+            onSelect={() => setCampaignType("DM_AUTORESPONDER")}
+          >
+            DM auto-responder: reply when someone messages you
+          </Radio>
+        </Section>
+
+        {!isDmAutoresponder && (
         <Section title="When someone comments on">
           <Radio
             checked={triggerScope === "specific"}
@@ -653,8 +686,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             next post or reel
           </Radio>
         </Section>
+        )}
 
-        <Section title="And this comment has">
+        <Section
+          title={isDmAutoresponder ? "When someone DMs you" : "And this comment has"}
+        >
           <Radio
             checked={matchMode === "specific"}
             onSelect={() => setMatchMode("specific")}
@@ -676,8 +712,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             checked={matchMode === "any"}
             onSelect={() => setMatchMode("any")}
           >
-            any word
+            {isDmAutoresponder ? "any message" : "any word"}
           </Radio>
+          {!isDmAutoresponder && (
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm text-foreground">
               reply to their comments under the post
@@ -687,7 +724,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
             />
           </div>
-          {publicReplyEnabled && (
+          )}
+          {!isDmAutoresponder && publicReplyEnabled && (
             <div className="space-y-2">
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -737,6 +775,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </Section>
 
+        {!isDmAutoresponder && (
         <Section title="They will get">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -767,8 +806,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             )}
           </div>
         </Section>
+        )}
 
-        <Section title="And then, they will get">
+        <Section
+          title={isDmAutoresponder ? "They will get" : "And then, they will get"}
+        >
           <div className="rounded-lg border border-border p-3 space-y-2">
             <span className="text-sm text-foreground">a DM with a link</span>
             <textarea
@@ -817,21 +859,25 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         <p className="mb-4 text-sm text-muted">Preview</p>
         <div className="flex justify-center lg:sticky lg:top-6 lg:block">
           <CampaignPreview
-            tab={previewTab}
+            tab={isDmAutoresponder ? "dm" : previewTab}
             onTabChange={setPreviewTab}
+            availableTabs={isDmAutoresponder ? ["dm"] : undefined}
             username={username}
             avatarUrl={avatarUrl}
             postThumb={postThumb}
             caption={postCaption}
             sampleComment={keywords[0] ?? ""}
-            publicReplyEnabled={publicReplyEnabled}
+            publicReplyEnabled={!isDmAutoresponder && publicReplyEnabled}
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
-            openingDmEnabled={openingDmEnabled}
+            openingDmEnabled={!isDmAutoresponder && openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
             revealMessage={dmMessage}
             hasLink={Boolean(trackedDestinationUrl.trim())}
             linkButtonLabel={linkButtonLabel || "Open link"}
+            inboundMessage={
+              isDmAutoresponder ? keywords[0] ?? "" : undefined
+            }
           />
         </div>
       </div>

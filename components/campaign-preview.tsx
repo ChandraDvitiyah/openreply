@@ -28,6 +28,11 @@ interface CampaignPreviewProps {
   revealMessage: string;
   hasLink: boolean;
   linkButtonLabel: string;
+  // For a DM auto-responder, the incoming message the user sends (rendered as an
+  // outgoing bubble above the auto-reply). Undefined for comment-to-DM.
+  inboundMessage?: string;
+  // Restrict which preview tabs are offered (auto-responders only show "DM").
+  availableTabs?: PreviewTab[];
 }
 
 const SAMPLE_USER = "username";
@@ -292,6 +297,7 @@ function DmScreen({
   revealMessage,
   hasLink,
   linkButtonLabel,
+  inboundMessage,
 }: {
   username: string;
   avatarUrl: string | null;
@@ -301,6 +307,7 @@ function DmScreen({
   revealMessage: string;
   hasLink: boolean;
   linkButtonLabel: string;
+  inboundMessage?: string;
 }) {
   return (
     <div className="flex h-full flex-col text-white">
@@ -316,6 +323,13 @@ function DmScreen({
       </div>
 
       <div className="flex-1 space-y-3 px-3 py-4">
+        {inboundMessage !== undefined && (
+          <div className="flex justify-end">
+            <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
+              {inboundMessage.trim() || "Hey! Can you send me the link?"}
+            </div>
+          </div>
+        )}
         {openingDmEnabled && (
           <>
             <div className="flex items-end gap-2">
@@ -379,11 +393,14 @@ function DmScreen({
 
 export default function CampaignPreview(props: CampaignPreviewProps) {
   const { tab, onTabChange } = props;
-  const tabs: { key: PreviewTab; label: string }[] = [
+  const allTabs: { key: PreviewTab; label: string }[] = [
     { key: "post", label: "Post" },
     { key: "comments", label: "Comments" },
     { key: "dm", label: "DM" },
   ];
+  const tabs = props.availableTabs
+    ? allTabs.filter((t) => props.availableTabs!.includes(t.key))
+    : allTabs;
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -415,6 +432,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             revealMessage={props.revealMessage}
             hasLink={props.hasLink}
             linkButtonLabel={props.linkButtonLabel}
+            inboundMessage={props.inboundMessage}
           />
         )}
       </Phone>
