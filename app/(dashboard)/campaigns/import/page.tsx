@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { parseCsv } from "@/lib/utils/csv";
 import { IMPORT_QUEUE_KEY, IMPORT_ACCOUNT_KEY } from "@/lib/import-queue";
+import { MAX_KEYWORDS } from "@/lib/constants";
 
 const SAMPLE = `keywords,dm_message,public_reply,tracked_url,opening_dm,opening_dm_button
 "yc","here it is: {link}","sent. check dms","https://events.ycombinator.com/startup-school-2026","hey! click below for the referral","send link"
@@ -53,7 +54,7 @@ export default function ImportCampaignsPage() {
         .split(/[,;]/)
         .map((k) => k.trim())
         .filter(Boolean)
-        .slice(0, 10);
+        .slice(0, MAX_KEYWORDS);
       const dmMessage = (r.dm_message ?? r.message ?? "").trim();
       if (keywords.length === 0 || !dmMessage) {
         setError(`Row ${i + 1} is missing keywords or a message.`);

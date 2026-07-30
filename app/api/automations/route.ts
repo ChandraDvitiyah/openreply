@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { MAX_KEYWORDS } from "@/lib/constants";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
@@ -31,7 +32,11 @@ const createAutomationSchema = z
     postUrl: z.string().url().optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
-    keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
+    keywords: z
+      .array(z.string().min(1).max(50))
+      .max(MAX_KEYWORDS)
+      .optional()
+      .default([]),
     matchAnyWord: z.boolean().optional().default(false),
     // A comment-to-comment campaign carries no DM, so the DM text is optional
     // and only required for the other types (enforced by the refine below).
@@ -111,7 +116,7 @@ const updateAutomationSchema = z.object({
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
-  keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
+  keywords: z.array(z.string().min(1).max(50)).max(MAX_KEYWORDS).optional(),
   matchAnyWord: z.boolean().optional(),
   // Empty is allowed so a comment-to-comment campaign (which has no DM) can
   // clear the text; the client always sends real DM text for the other types.
