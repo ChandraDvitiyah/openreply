@@ -37,7 +37,15 @@ const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
 function formatError(error: unknown): string {
   if (error instanceof MetaApiError) {
-    return `Meta API Error ${error.code}: ${error.message}`;
+    // Include the subcode and fbtrace_id: for generic errors (e.g. code 1,
+    // "An unknown error has occurred") the subcode is what disambiguates the
+    // real cause, and the trace id is what Meta support needs to look it up.
+    const code =
+      error.subcode !== undefined
+        ? `${error.code}/${error.subcode}`
+        : `${error.code}`;
+    const trace = error.fbTraceId ? ` [trace ${error.fbTraceId}]` : "";
+    return `Meta API Error ${code}: ${error.message}${trace}`;
   }
   if (error instanceof Error) {
     return error.message;
