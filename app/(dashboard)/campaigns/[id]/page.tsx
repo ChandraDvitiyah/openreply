@@ -15,6 +15,7 @@ import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview"
 
 interface Campaign {
   id: string;
+  type: "COMMENT_TO_DM" | "DM_AUTORESPONDER" | "COMMENT_TO_COMMENT";
   name: string;
   postId: string | null;
   postUrl: string | null;
@@ -138,6 +139,9 @@ export default function CampaignDetailPage() {
         ? [campaign.publicReplyMessage]
         : [];
   const hasLink = Boolean(campaign.trackedLinks?.[0]?.destinationUrl);
+  // A comment-to-comment campaign has no DM — the public reply is its whole
+  // delivery.
+  const isCommentToComment = campaign.type === "COMMENT_TO_COMMENT";
 
   const trigger = campaign.matchAnyPost
     ? "Any post or reel"
@@ -217,12 +221,14 @@ export default function CampaignDetailPage() {
           </Summary>
         )}
 
-        <Summary title="And then, they will get a DM">
-          <FieldBox>{campaign.dmMessage}</FieldBox>
-          {hasLink && (
-            <FieldBox>{campaign.linkButtonLabel || "Open link"}</FieldBox>
-          )}
-        </Summary>
+        {!isCommentToComment && (
+          <Summary title="And then, they will get a DM">
+            <FieldBox>{campaign.dmMessage}</FieldBox>
+            {hasLink && (
+              <FieldBox>{campaign.linkButtonLabel || "Open link"}</FieldBox>
+            )}
+          </Summary>
+        )}
       </div>
 
       {/* Right: top bar + tabs */}
@@ -273,8 +279,13 @@ export default function CampaignDetailPage() {
         {tab === "preview" && (
           <div className="flex justify-center sm:justify-start">
           <CampaignPreview
-            tab={previewTab}
+            tab={
+              isCommentToComment && previewTab === "dm" ? "comments" : previewTab
+            }
             onTabChange={setPreviewTab}
+            availableTabs={
+              isCommentToComment ? ["post", "comments"] : undefined
+            }
             username={campaign.instagramAccount.username}
             avatarUrl={avatarUrl}
             postThumb={postThumb}

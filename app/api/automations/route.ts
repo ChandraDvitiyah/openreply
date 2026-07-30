@@ -19,9 +19,10 @@ const createAutomationSchema = z
   .object({
     name: z.string().min(1).max(100),
     // Which trigger this campaign uses. Defaults to the original comment-to-DM
-    // behaviour; DM_AUTORESPONDER replies to inbound DMs instead.
+    // behaviour; DM_AUTORESPONDER replies to inbound DMs instead;
+    // COMMENT_TO_COMMENT only posts a public reply (no DM, opening DM, or link).
     type: z
-      .enum(["COMMENT_TO_DM", "DM_AUTORESPONDER"])
+      .enum(["COMMENT_TO_DM", "DM_AUTORESPONDER", "COMMENT_TO_COMMENT"])
       .optional()
       .default("COMMENT_TO_DM"),
     goal: z.string().min(1).max(120).optional().nullable(),
@@ -32,7 +33,9 @@ const createAutomationSchema = z
     matchAnyPost: z.boolean().optional().default(false),
     keywords: z.array(z.string().min(1).max(50)).max(10).optional().default([]),
     matchAnyWord: z.boolean().optional().default(false),
-    dmMessage: z.string().min(1).max(1000),
+    // A comment-to-comment campaign carries no DM, so the DM text is optional
+    // and only required for the other types (enforced by the refine below).
+    dmMessage: z.string().max(1000).optional().default(""),
     dmMessages: z
       .array(z.string().max(1000))
       .max(10)
@@ -72,6 +75,23 @@ const createAutomationSchema = z
     message: "Add at least one keyword, or match any word",
     path: ["keywords"],
   })
+  // Every type except comment-to-comment delivers a DM, so it needs DM text.
+  .refine(
+    (d) =>
+      d.type === "COMMENT_TO_COMMENT" ||
+      d.dmMessage.trim().length > 0 ||
+      d.dmMessages.some((m) => m.trim().length > 0),
+    { message: "Add the DM message", path: ["dmMessage"] }
+  )
+  // A comment-to-comment campaign's only delivery is the public reply, so it
+  // needs an enabled public reply with at least one message.
+  .refine(
+    (d) =>
+      d.type !== "COMMENT_TO_COMMENT" ||
+      Boolean(d.publicReplyMessage?.trim()) ||
+      d.publicReplyMessages.some((m) => m.trim().length > 0),
+    { message: "Add a public reply message", path: ["publicReplyMessages"] }
+  )
   // An opening DM needs both a message and a button label.
   .refine(
     (d) =>
@@ -83,7 +103,9 @@ const createAutomationSchema = z
 
 const updateAutomationSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  type: z.enum(["COMMENT_TO_DM", "DM_AUTORESPONDER"]).optional(),
+  type: z
+    .enum(["COMMENT_TO_DM", "DM_AUTORESPONDER", "COMMENT_TO_COMMENT"])
+    .optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
@@ -91,7 +113,9 @@ const updateAutomationSchema = z.object({
   matchAnyPost: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(10).optional(),
   matchAnyWord: z.boolean().optional(),
-  dmMessage: z.string().min(1).max(1000).optional(),
+  // Empty is allowed so a comment-to-comment campaign (which has no DM) can
+  // clear the text; the client always sends real DM text for the other types.
+  dmMessage: z.string().max(1000).optional(),
   dmMessages: z.array(z.string().max(1000)).max(10).optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
@@ -334,14 +358,24 @@ export async function POST(request: NextRequest) {
   const { trackedDestinationUrl } = parsed.data;
 
   const isDmAutoresponder = parsed.data.type === "DM_AUTORESPONDER";
+  const isCommentToComment = parsed.data.type === "COMMENT_TO_COMMENT";
   const { matchAnyWord } = parsed.data;
   // A DM auto-responder has no post trigger, public reply, or opening DM.
   const pendingNextReel = isDmAutoresponder ? false : parsed.data.pendingNextReel;
   const matchAnyPost = isDmAutoresponder ? false : parsed.data.matchAnyPost;
-  const openingDmEnabled = isDmAutoresponder ? false : parsed.data.openingDmEnabled;
+  // Neither a DM auto-responder nor a comment-to-comment campaign uses an
+  // opening DM.
+  const openingDmEnabled =
+    isDmAutoresponder || isCommentToComment
+      ? false
+      : parsed.data.openingDmEnabled;
+  // A DM auto-responder never has a public reply; it is the entire delivery of
+  // a comment-to-comment campaign, so force it on there.
   const publicReplyEnabled = isDmAutoresponder
     ? false
-    : parsed.data.publicReplyEnabled;
+    : isCommentToComment
+      ? true
+      : parsed.data.publicReplyEnabled;
   // A post is only stored for the "specific post" trigger.
   const isSpecificPost = !isDmAutoresponder && !pendingNextReel && !matchAnyPost;
   const publicReplyList = (
@@ -355,15 +389,19 @@ export async function POST(request: NextRequest) {
     .filter(Boolean);
 
   // Reply-DM variants. One is picked at random per send; the primary dmMessage
-  // stays in sync as the first variant for back-compat.
-  const dmList = (
-    parsed.data.dmMessages.length > 0
-      ? parsed.data.dmMessages
-      : [parsed.data.dmMessage]
-  )
-    .map((m) => m.trim())
-    .filter(Boolean);
-  const primaryDmMessage = dmList[0] ?? parsed.data.dmMessage;
+  // stays in sync as the first variant for back-compat. A comment-to-comment
+  // campaign has no DM at all.
+  const dmList = isCommentToComment
+    ? []
+    : (parsed.data.dmMessages.length > 0
+        ? parsed.data.dmMessages
+        : [parsed.data.dmMessage]
+      )
+        .map((m) => m.trim())
+        .filter(Boolean);
+  const primaryDmMessage = isCommentToComment
+    ? ""
+    : dmList[0] ?? parsed.data.dmMessage;
 
   const automation = await prisma.automation.create({
     data: {
@@ -386,7 +424,10 @@ export async function POST(request: NextRequest) {
       openingDmButtonLabel: openingDmEnabled
         ? parsed.data.openingDmButtonLabel || null
         : null,
-      linkButtonLabel: parsed.data.linkButtonLabel || null,
+      // A comment-to-comment campaign has no link, so no button label either.
+      linkButtonLabel: isCommentToComment
+        ? null
+        : parsed.data.linkButtonLabel || null,
       publicReplyEnabled,
       publicReplyMessages: publicReplyEnabled ? publicReplyList : [],
       publicReplyMessage: publicReplyEnabled
@@ -397,7 +438,8 @@ export async function POST(request: NextRequest) {
       workspaceId,
       instagramAccountId: instagramAccount.id,
       reportShareSlug: generateReportShareSlug(),
-      ...(trackedDestinationUrl
+      // A comment-to-comment campaign never has a tracked link.
+      ...(trackedDestinationUrl && !isCommentToComment
         ? {
             trackedLinks: {
               create: {
@@ -487,6 +529,20 @@ export async function PATCH(request: NextRequest) {
     automationData.publicReplyEnabled = false;
     automationData.publicReplyMessages = [];
     automationData.publicReplyMessage = null;
+  }
+
+  // A comment-to-comment campaign has no DM, opening DM, or link — the public
+  // reply is its whole delivery. Clear the DM-side config and force the reply
+  // on so a type switch can't leave a stale DM behind. The tracked link, if
+  // any, is cleared below when the client sends an empty destination URL.
+  if (automationData.type === "COMMENT_TO_COMMENT") {
+    automationData.dmMessage = "";
+    automationData.dmMessages = [];
+    automationData.openingDmEnabled = false;
+    automationData.openingDmMessage = null;
+    automationData.openingDmButtonLabel = null;
+    automationData.linkButtonLabel = null;
+    automationData.publicReplyEnabled = true;
   }
 
   // Keep dependent fields consistent: any-word clears keywords; a disabled

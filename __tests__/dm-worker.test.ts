@@ -6,6 +6,7 @@ const {
   mockSendPrivateReplyWithLinkButton,
   mockSendDirectMessage,
   mockSendDirectMessageWithLinkButton,
+  mockSendCommentReply,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -34,6 +35,7 @@ const {
   mockSendPrivateReplyWithLinkButton: vi.fn(),
   mockSendDirectMessage: vi.fn(),
   mockSendDirectMessageWithLinkButton: vi.fn(),
+  mockSendCommentReply: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -52,7 +54,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendPrivateReplyWithButton: vi.fn(),
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
-  sendCommentReply: vi.fn(),
+  sendCommentReply: mockSendCommentReply,
   MetaApiError: class MetaApiError extends Error {
     code: number;
     constructor(
@@ -221,6 +223,7 @@ beforeEach(() => {
     recipient_id: "dm_sender_1",
     message_id: "msg_004",
   });
+  mockSendCommentReply.mockResolvedValue({ id: "comment_reply_1" });
 });
 
 describe("DM Worker — Full Pipeline", () => {
@@ -231,7 +234,7 @@ describe("DM Worker — Full Pipeline", () => {
 
     expect(mockPrisma.automation.findMany).toHaveBeenCalledWith({
       where: {
-        type: "COMMENT_TO_DM",
+        type: { in: ["COMMENT_TO_DM", "COMMENT_TO_COMMENT"] },
         OR: [{ postId: "media_101" }, { matchAnyPost: true }],
         isActive: true,
         instagramAccount: { instagramId: "ig_456" },
@@ -484,6 +487,78 @@ describe("DM Worker — Full Pipeline", () => {
       "Get offer",
       "http://localhost:3000/r/abc123"
     );
+  });
+});
+
+describe("DM Worker — Comment to Comment", () => {
+  const commentOnly = {
+    ...mockAutomation,
+    type: "COMMENT_TO_COMMENT" as const,
+    publicReplyEnabled: true,
+    publicReplyMessages: ["Thanks for the comment!"],
+    publicReplyMessage: null,
+    // A comment-to-comment campaign has no DM.
+    dmMessage: "",
+    dmMessages: [],
+  };
+
+  beforeEach(() => {
+    mockPrisma.automation.findMany.mockResolvedValue([commentOnly]);
+  });
+
+  it("posts the public reply and never sends a DM", async () => {
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendCommentReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "comment_555",
+      "Thanks for the comment!"
+    );
+    // No DM leg: no quota/rate-limit reservation and no private reply.
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockReserveDMSlot).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    // The log is marked SENT off the back of the public reply.
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          publicReplySentAt: expect.any(Date),
+          status: "SENT",
+        }),
+      })
+    );
+  });
+
+  it("skips once the public reply has already been posted", async () => {
+    mockPrisma.dmLog.findUnique.mockResolvedValue({
+      id: "existing_log",
+      status: "SENT",
+      publicReplySentAt: new Date(),
+    });
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+  });
+
+  it("marks the log FAILED and re-throws when the public reply fails", async () => {
+    const error = new Error("Reply API Error");
+    mockSendCommentReply.mockRejectedValue(error);
+
+    const processor = getProcessor();
+    await expect(processor(createMockJob())).rejects.toThrow("Reply API Error");
+
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "FAILED",
+          publicReplyError: "Reply API Error",
+        }),
+      })
+    );
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
   });
 });
 

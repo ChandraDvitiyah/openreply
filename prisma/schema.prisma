@@ -151,9 +151,12 @@ model Automation {
 
   // Which kind of campaign this is. COMMENT_TO_DM (the default) fires when
   // someone comments on a post; DM_AUTORESPONDER fires when someone sends the
-  // account a DM. The type decides which trigger fields below are meaningful:
-  // a DM auto-responder ignores post targeting / public replies / opening DMs
-  // and only uses keyword matching + the reply DM.
+  // account a DM; COMMENT_TO_COMMENT fires on a comment but only posts a public
+  // reply (no DM, opening DM, or link). The type decides which trigger fields
+  // below are meaningful: a DM auto-responder ignores post targeting / public
+  // replies / opening DMs and only uses keyword matching + the reply DM, while
+  // a comment-to-comment campaign ignores the DM/opening-DM/link fields and
+  // uses only post targeting + keyword matching + the public reply.
   type           CampaignType @default(COMMENT_TO_DM)
 
   name           String
@@ -326,6 +329,7 @@ model OperationalEvent {
 enum CampaignType {
   COMMENT_TO_DM
   DM_AUTORESPONDER
+  COMMENT_TO_COMMENT
 }
 
 enum WorkspaceRole {

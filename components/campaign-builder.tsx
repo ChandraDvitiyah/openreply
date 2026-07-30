@@ -26,7 +26,7 @@ import {
 
 type TriggerScope = "specific" | "any" | "next";
 type MatchMode = "specific" | "any";
-type CampaignType = "COMMENT_TO_DM" | "DM_AUTORESPONDER";
+type CampaignType = "COMMENT_TO_DM" | "DM_AUTORESPONDER" | "COMMENT_TO_COMMENT";
 
 interface LoadedCampaign {
   id: string;
@@ -143,6 +143,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [campaignType, setCampaignType] =
     useState<CampaignType>("COMMENT_TO_DM");
   const isDmAutoresponder = campaignType === "DM_AUTORESPONDER";
+  // A comment-to-comment campaign only posts a public reply — no DM, opening
+  // DM, or link.
+  const isCommentToComment = campaignType === "COMMENT_TO_COMMENT";
 
   const [triggerScope, setTriggerScope] = useState<TriggerScope>("specific");
   const [postId, setPostId] = useState<string | null>(null);
@@ -395,6 +398,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       setKeywordInput("");
     }
     const dmVariants = dmMessages.map((m) => m.trim()).filter(Boolean);
+    const publicReplyVariants = publicReplyMessages
+      .map((m) => m.trim())
+      .filter(Boolean);
 
     if (!selectedAccountId) return setError("Connect an Instagram account first.");
     if (!isDmAutoresponder && triggerScope === "specific" && !postId)
@@ -405,9 +411,19 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           ? "Add at least one keyword, or reply to any message."
           : "Add at least one keyword, or switch to any word."
       );
-    if (dmVariants.length === 0) return setError("Add the DM with the link.");
-    if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
-      return setError("Your opening DM needs a message and a button label.");
+    // A comment-to-comment campaign delivers only the public reply; every other
+    // type delivers a DM.
+    if (isCommentToComment) {
+      if (publicReplyVariants.length === 0)
+        return setError("Add a public reply to post under the comment.");
+    } else {
+      if (dmVariants.length === 0) return setError("Add the DM with the link.");
+      if (
+        openingDmEnabled &&
+        (!openingDmMessage.trim() || !openingDmButtonLabel.trim())
+      )
+        return setError("Your opening DM needs a message and a button label.");
+    }
 
     setSaving(true);
 
@@ -423,19 +439,32 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       pendingNextReel: !isDmAutoresponder && triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : finalKeywords,
-      dmMessage: dmVariants[0],
-      dmMessages: dmVariants,
-      openingDmEnabled: isDmAutoresponder ? false : openingDmEnabled,
+      // A comment-to-comment campaign carries no DM, opening DM, or link.
+      dmMessage: isCommentToComment ? "" : dmVariants[0],
+      dmMessages: isCommentToComment ? [] : dmVariants,
+      openingDmEnabled:
+        isDmAutoresponder || isCommentToComment ? false : openingDmEnabled,
       openingDmMessage:
-        !isDmAutoresponder && openingDmEnabled ? openingDmMessage : null,
+        !isDmAutoresponder && !isCommentToComment && openingDmEnabled
+          ? openingDmMessage
+          : null,
       openingDmButtonLabel:
-        !isDmAutoresponder && openingDmEnabled ? openingDmButtonLabel : null,
-      publicReplyEnabled: isDmAutoresponder ? false : publicReplyEnabled,
+        !isDmAutoresponder && !isCommentToComment && openingDmEnabled
+          ? openingDmButtonLabel
+          : null,
+      // The public reply is forced on for a comment-to-comment campaign.
+      publicReplyEnabled: isDmAutoresponder
+        ? false
+        : isCommentToComment
+          ? true
+          : publicReplyEnabled,
       publicReplyMessages:
-        !isDmAutoresponder && publicReplyEnabled
-          ? publicReplyMessages.map((m) => m.trim()).filter(Boolean)
+        !isDmAutoresponder && (publicReplyEnabled || isCommentToComment)
+          ? publicReplyVariants
           : [],
-      trackedDestinationUrl: trackedDestinationUrl.trim() || "",
+      trackedDestinationUrl: isCommentToComment
+        ? ""
+        : trackedDestinationUrl.trim() || "",
       linkButtonLabel: linkButtonLabel.trim() || "Open link",
       isActive: activeValue,
     };
@@ -683,6 +712,12 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             Comment → DM: reply when someone comments on a post
           </Radio>
           <Radio
+            checked={campaignType === "COMMENT_TO_COMMENT"}
+            onSelect={() => setCampaignType("COMMENT_TO_COMMENT")}
+          >
+            Comment → Comment: publicly reply when someone comments (no DM)
+          </Radio>
+          <Radio
             checked={campaignType === "DM_AUTORESPONDER"}
             onSelect={() => setCampaignType("DM_AUTORESPONDER")}
           >
@@ -786,7 +821,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           >
             {isDmAutoresponder ? "any message" : "any word"}
           </Radio>
-          {!isDmAutoresponder && (
+          {!isDmAutoresponder && !isCommentToComment && (
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
             <span className="text-sm text-foreground">
               reply to their comments under the post
@@ -797,8 +832,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             />
           </div>
           )}
-          {!isDmAutoresponder && publicReplyEnabled && (
+          {!isDmAutoresponder && (publicReplyEnabled || isCommentToComment) && (
             <div className="space-y-2">
+              {isCommentToComment && (
+                <p className="text-sm font-medium text-foreground">
+                  They will get a public reply under the post
+                </p>
+              )}
               {publicReplyMessages.map((msg, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input
@@ -847,7 +887,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           )}
         </Section>
 
-        {!isDmAutoresponder && (
+        {!isDmAutoresponder && !isCommentToComment && (
         <Section title="They will get">
           <div className="rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
@@ -880,6 +920,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         </Section>
         )}
 
+        {!isCommentToComment && (
         <Section
           title={isDmAutoresponder ? "They will get" : "And then, they will get"}
         >
@@ -959,6 +1000,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </p>
           </div>
         </Section>
+        )}
       </div>
 
       {/* Right: preview */}
@@ -966,17 +1008,33 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         <p className="mb-4 text-sm text-muted">Preview</p>
         <div className="flex justify-center lg:sticky lg:top-6 lg:block">
           <CampaignPreview
-            tab={isDmAutoresponder ? "dm" : previewTab}
+            tab={
+              isDmAutoresponder
+                ? "dm"
+                : isCommentToComment && previewTab === "dm"
+                  ? "comments"
+                  : previewTab
+            }
             onTabChange={setPreviewTab}
-            availableTabs={isDmAutoresponder ? ["dm"] : undefined}
+            availableTabs={
+              isDmAutoresponder
+                ? ["dm"]
+                : isCommentToComment
+                  ? ["post", "comments"]
+                  : undefined
+            }
             username={username}
             avatarUrl={avatarUrl}
             postThumb={postThumb}
             caption={postCaption}
             sampleComment={keywords[0] ?? ""}
-            publicReplyEnabled={!isDmAutoresponder && publicReplyEnabled}
+            publicReplyEnabled={
+              !isDmAutoresponder && (publicReplyEnabled || isCommentToComment)
+            }
             publicReplyMessage={publicReplyMessages.find((m) => m.trim()) ?? ""}
-            openingDmEnabled={!isDmAutoresponder && openingDmEnabled}
+            openingDmEnabled={
+              !isDmAutoresponder && !isCommentToComment && openingDmEnabled
+            }
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
             revealMessage={dmMessages.find((m) => m.trim()) ?? ""}
