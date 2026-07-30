@@ -71,7 +71,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
 
   const automations = await prisma.automation.findMany({
     where: {
-      type: "COMMENT_TO_DM",
+      // Both comment-triggered types run here; a comment-to-comment campaign
+      // only posts the public reply (its DM leg is skipped below).
+      type: { in: ["COMMENT_TO_DM", "COMMENT_TO_COMMENT"] },
       // Match campaigns bound to this specific post, plus any-post campaigns.
       OR: [{ postId: mediaId }, { matchAnyPost: true }],
       isActive: true,
@@ -116,15 +118,24 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       },
     });
 
-    const alreadyDmd = existingLog?.status === "SENT";
+    // A comment-to-comment campaign never sends a DM — the public reply is its
+    // entire delivery.
+    const isCommentOnly = automation.type === "COMMENT_TO_COMMENT";
+    const alreadyDmd = !isCommentOnly && existingLog?.status === "SENT";
     const alreadyPublicReplied = Boolean(existingLog?.publicReplySentAt);
-    const needsDm = !alreadyDmd;
+    const needsDm = !isCommentOnly && !alreadyDmd;
 
     // Skip only when there is genuinely nothing left to do. A comment whose DM
     // already sent but whose public reply never posted (e.g. it hit a rate
     // limit) must still come back so the public reply can be retried.
     if (existingLog?.status === "SKIPPED_PLAN_LIMIT") continue;
-    if (alreadyDmd && (alreadyPublicReplied || !automation.publicReplyEnabled)) {
+    if (isCommentOnly) {
+      // Nothing left once the public reply has posted.
+      if (alreadyPublicReplied) continue;
+    } else if (
+      alreadyDmd &&
+      (alreadyPublicReplied || !automation.publicReplyEnabled)
+    ) {
       continue;
     }
 
@@ -245,7 +256,14 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           where: {
             automationId_commentId: { automationId: automation.id, commentId },
           },
-          data: { publicReplySentAt: new Date(), publicReplyError: null },
+          data: {
+            publicReplySentAt: new Date(),
+            publicReplyError: null,
+            // For a comment-to-comment campaign the public reply is the whole
+            // delivery, so mark the log SENT on success (there is no DM leg to
+            // do it later).
+            ...(isCommentOnly ? { status: "SENT" } : {}),
+          },
         });
       } catch (error) {
         console.error(
@@ -257,9 +275,19 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             where: {
               automationId_commentId: { automationId: automation.id, commentId },
             },
-            data: { publicReplyError: formatError(error) },
+            data: {
+              publicReplyError: formatError(error),
+              ...(isCommentOnly
+                ? { status: "FAILED", attempts: job.attemptsMade + 1 }
+                : {}),
+            },
           })
           .catch(() => {});
+        // A comment-to-comment campaign has no DM leg to fall back on, so a
+        // failed public reply is a failed delivery — rethrow to let BullMQ
+        // retry with backoff. For comment-to-DM the reply is best-effort and
+        // must not block the DM, so we swallow it as before.
+        if (isCommentOnly) throw error;
       }
     }
 

@@ -14,7 +14,7 @@ import { readCache, writeCache } from "@/lib/client-cache";
 
 interface Campaign {
   id: string;
-  type: "COMMENT_TO_DM" | "DM_AUTORESPONDER";
+  type: "COMMENT_TO_DM" | "DM_AUTORESPONDER" | "COMMENT_TO_COMMENT";
   name: string;
   goal: string | null;
   postId: string | null;
@@ -435,6 +435,11 @@ export default function CampaignsPage() {
                       DM auto-responder
                     </span>
                   )}
+                  {auto.type === "COMMENT_TO_COMMENT" && (
+                    <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
+                      Comment → Comment
+                    </span>
+                  )}
                   {auto.pendingNextReel && (
                     <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
                       Waiting for next reel
@@ -454,8 +459,17 @@ export default function CampaignsPage() {
                   ))}
                 </div>
 
-                {/* DM preview */}
-                <p className="text-sm text-muted truncate">&ldquo;{auto.dmMessage}&rdquo;</p>
+                {/* Reply preview — the public reply for comment-to-comment, the
+                    DM otherwise. */}
+                <p className="text-sm text-muted truncate">
+                  &ldquo;
+                  {auto.type === "COMMENT_TO_COMMENT"
+                    ? auto.publicReplyMessages[0] ??
+                      auto.publicReplyMessage ??
+                      ""
+                    : auto.dmMessage}
+                  &rdquo;
+                </p>
 
                 {/* Stats */}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-xs text-zinc-500">
