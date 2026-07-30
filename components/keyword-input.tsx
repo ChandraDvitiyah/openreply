@@ -7,6 +7,7 @@
  */
 
 import { useState, type KeyboardEvent } from "react";
+import { MAX_KEYWORDS } from "@/lib/constants";
 
 interface KeywordInputProps {
   keywords: string[];
@@ -14,7 +15,7 @@ interface KeywordInputProps {
   max?: number;
 }
 
-export default function KeywordInput({ keywords, onChange, max = 10 }: KeywordInputProps) {
+export default function KeywordInput({ keywords, onChange, max = MAX_KEYWORDS }: KeywordInputProps) {
   const [input, setInput] = useState("");
 
   function addKeyword(value: string) {
