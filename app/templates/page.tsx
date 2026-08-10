@@ -66,25 +66,25 @@ export default function TemplatesPage() {
           {CAMPAIGN_TEMPLATES.map((template) => (
             <article
               key={template.slug}
-              className="flex min-h-full flex-col border border-white/10 bg-white/[0.035] p-5 transition hover:border-white/20 hover:bg-white/[0.055]"
+              className="flex min-h-full flex-col border border-border bg-surface p-5 transition hover:border-border-hover hover:bg-surface-hover"
             >
               <div className="mb-5">
                 <TemplateVisual template={template} compact />
               </div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">
+              <p className="text-xs font-semibold uppercase tracking-wide text-success">
                 {template.category}
               </p>
-              <h2 className="mt-3 text-xl font-black leading-tight text-white">
+              <h2 className="mt-3 text-xl font-black leading-tight text-foreground">
                 {template.title}
               </h2>
-              <p className="mt-3 text-sm leading-6 text-zinc-400">
+              <p className="mt-3 text-sm leading-6 text-muted">
                 {template.summary}
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {template.keywords.map((keyword) => (
                   <span
                     key={keyword}
-                    className="border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300"
+                    className="border border-border bg-background px-2 py-1 text-xs font-semibold text-muted"
                   >
                     {keyword}
                   </span>
@@ -93,7 +93,7 @@ export default function TemplatesPage() {
               <div className="mt-auto grid gap-2 pt-6">
                 <Link
                   href={`/templates/${template.slug}`}
-                  className="inline-flex w-full items-center justify-center border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-bold text-white transition hover:border-white/20 hover:bg-white/[0.08]"
+                  className="inline-flex w-full items-center justify-center border border-border bg-surface px-4 py-3 text-sm font-bold text-foreground transition hover:border-border-hover hover:bg-background"
                 >
                   View playbook
                 </Link>

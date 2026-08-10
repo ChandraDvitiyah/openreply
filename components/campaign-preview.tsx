@@ -325,7 +325,7 @@ function DmScreen({
       <div className="flex-1 space-y-3 px-3 py-4">
         {inboundMessage !== undefined && (
           <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
+            <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm text-[#101211]">
               {inboundMessage.trim() || "Hey! Can you send me the link?"}
             </div>
           </div>
@@ -342,7 +342,7 @@ function DmScreen({
               </div>
             </div>
             <div className="flex justify-end">
-              <div className="rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
+              <div className="rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm text-[#101211]">
                 {openingDmButtonLabel || "Button label"}
               </div>
             </div>
@@ -380,7 +380,7 @@ function DmScreen({
       </div>
 
       <div className="flex items-center gap-2 px-3 py-3">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-white">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[#101211]">
           {Ico.camera("h-4 w-4")}
         </span>
         <div className="flex-1 rounded-full bg-zinc-800 px-3 py-2 text-xs text-zinc-500">Message…</div>

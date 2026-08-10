@@ -35,17 +35,17 @@ export default async function InvitePage({ params }: InvitePageProps) {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-5 py-12">
-        <Link href="/" className="mb-8 text-sm font-bold text-cyan-100">
+        <Link href="/" className="mb-8 text-sm font-bold text-success">
           OpenReply
         </Link>
-        <section className="border border-white/10 bg-white/[0.035] p-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-100">
+        <section className="panel rounded-2xl p-8">
+          <p className="text-xs font-semibold uppercase tracking-wide text-success">
             Workspace invitation
           </p>
-          <h1 className="mt-4 text-3xl font-black leading-tight text-white">
+          <h1 className="mt-4 text-3xl font-black leading-tight text-foreground">
             Join {invitation.workspace.name}
           </h1>
-          <p className="mt-4 text-sm leading-6 text-zinc-400">
+          <p className="mt-4 text-sm leading-6 text-muted">
             You were invited as {invitation.role.toLowerCase()} for{" "}
             {invitation.email}.
           </p>
@@ -67,4 +67,3 @@ export default async function InvitePage({ params }: InvitePageProps) {
     </main>
   );
 }
-

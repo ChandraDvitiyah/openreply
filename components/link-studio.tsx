@@ -127,7 +127,7 @@ export default function LinkStudio({
               </select>
             </label>
           </div>
-          <button disabled={isPending} onClick={saveProfile} className="mt-6 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover disabled:opacity-60">
+          <button disabled={isPending} onClick={saveProfile} className="button-primary mt-6 disabled:opacity-60">
             Save profile
           </button>
         </section>
@@ -164,7 +164,7 @@ export default function LinkStudio({
                 <p className="truncate text-sm text-muted">{link.url}</p>
               </div>
               <p className="hidden text-sm text-muted sm:block">{link.clickCount} clicks</p>
-              <button onClick={() => toggleLink(link)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${link.enabled ? "bg-green-400/15 text-green-300" : "bg-white/5 text-muted"}`}>{link.enabled ? "Live" : "Hidden"}</button>
+              <button onClick={() => toggleLink(link)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${link.enabled ? "bg-success/10 text-success" : "bg-border text-muted"}`}>{link.enabled ? "Live" : "Hidden"}</button>
               <button aria-label={`Delete ${link.title}`} onClick={() => removeLink(link.id)} className="px-2 text-muted hover:text-error">×</button>
             </article>
           ))}

@@ -360,14 +360,14 @@ export default function InboxPage() {
                       <div
                         className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
                           m.fromMe
-                            ? "bg-accent text-white"
+                            ? "bg-accent text-[#292929]"
                             : "bg-surface text-foreground border border-border"
                         }`}
                       >
                         <p className="whitespace-pre-wrap break-words">{m.text}</p>
                         <p
                           className={`mt-1 text-[10px] ${
-                            m.fromMe ? "text-white/70" : "text-zinc-500"
+                            m.fromMe ? "text-[#536348]" : "text-zinc-500"
                           }`}
                         >
                           {formatTime(m.createdTime)}
@@ -395,7 +395,7 @@ export default function InboxPage() {
                     type="button"
                     onClick={() => void handleSend()}
                     disabled={sending || !draft.trim()}
-                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                    className="button-primary disabled:opacity-50"
                   >
                     {sending ? "Sending…" : "Send"}
                   </button>

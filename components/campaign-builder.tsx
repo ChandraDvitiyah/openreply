@@ -105,23 +105,23 @@ function Radio({
 function Toggle({
   on,
   onToggle,
+  label,
 }: {
   on: boolean;
   onToggle: () => void;
+  label: string;
 }) {
   return (
     <button
       type="button"
       onClick={onToggle}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-        on ? "bg-accent" : "bg-zinc-700"
-      }`}
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      data-state={on ? "on" : "off"}
+      className="dashboard-toggle"
     >
-      <span
-        className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-transform ${
-          on ? "left-6" : "left-1"
-        }`}
-      />
+      <span aria-hidden="true" className="dashboard-toggle-thumb" />
     </button>
   );
 }
@@ -667,7 +667,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             type="button"
             onClick={() => handleSubmit(mode === "new" ? true : isActive)}
             disabled={saving}
-            className="rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="button-primary disabled:opacity-50"
           >
             {saving ? "Saving…" : mode === "new" ? "Go Live" : "Save changes"}
           </button>
@@ -847,6 +847,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <Toggle
               on={publicReplyEnabled}
               onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
+              label="Public comment reply"
             />
           </div>
           )}
@@ -913,6 +914,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
               <Toggle
                 on={openingDmEnabled}
                 onToggle={() => setOpeningDmEnabled(!openingDmEnabled)}
+                label="Opening direct message"
               />
             </div>
             {openingDmEnabled && (

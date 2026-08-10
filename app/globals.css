@@ -76,6 +76,15 @@ body {
   font-size: 0.875rem;
 }
 
+.legal-copy h2 {
+  color: var(--color-foreground);
+}
+
+.legal-copy a {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
 .dot-grid {
   background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px);
   background-size: 18px 18px;
@@ -211,9 +220,7 @@ select:focus-visible {
 .dashboard-ui .button-primary,
 .dashboard-ui .button-secondary,
 .dashboard-ui button[type="submit"],
-.dashboard-ui a[class*="button-"],
-.dashboard-ui button[class*="bg-accent"],
-.dashboard-ui a[class*="bg-accent"] {
+.dashboard-ui a[class*="button-"] {
   min-height: 36px;
   border-radius: 999px !important;
   padding: 0.55rem 1rem;
@@ -224,12 +231,6 @@ select:focus-visible {
 .dashboard-ui .button-primary {
   background: var(--dashboard-brand);
   color: var(--dashboard-ink);
-}
-
-.dashboard-ui button[class*="bg-accent"],
-.dashboard-ui a[class*="bg-accent"] {
-  background: var(--dashboard-brand) !important;
-  color: var(--dashboard-ink) !important;
 }
 
 .dashboard-ui .button-secondary {
@@ -252,6 +253,42 @@ select:focus-visible {
 .dashboard-ui table { color: var(--dashboard-ink); }
 .dashboard-ui th { color: var(--dashboard-tertiary); font-size: 12px; font-weight: 500; }
 .dashboard-ui td { font-size: 13px; }
+
+/* State controls are intentionally separate from action buttons. A previous
+   substring selector made an active switch inherit pill-button padding. */
+.dashboard-ui .dashboard-toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  min-height: 24px;
+  flex: none;
+  border: 1px solid #c9c9c5;
+  border-radius: 999px;
+  background: #d9d9d5;
+  padding: 0;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.dashboard-ui .dashboard-toggle[data-state="on"] {
+  border-color: #86cd51;
+  background: var(--dashboard-brand);
+}
+
+.dashboard-ui .dashboard-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(41, 41, 41, 0.22);
+  transition: transform 160ms ease;
+}
+
+.dashboard-ui .dashboard-toggle[data-state="on"] .dashboard-toggle-thumb {
+  transform: translateX(20px);
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

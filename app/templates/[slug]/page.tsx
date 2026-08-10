@@ -98,66 +98,66 @@ export default async function TemplateDetailPage({ params }: TemplatePageProps) 
 
       <section className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-16 sm:px-6 lg:grid-cols-[0.78fr_1.22fr] lg:px-8">
         <aside className="space-y-4">
-          <div className="border border-white/10 bg-white/[0.035] p-5">
+          <div className="border border-border bg-surface p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Audience
             </p>
-            <p className="mt-2 text-lg font-bold text-white">{template.audience}</p>
+            <p className="mt-2 text-lg font-bold text-foreground">{template.audience}</p>
           </div>
-          <div className="border border-white/10 bg-white/[0.035] p-5">
+          <div className="border border-border bg-surface p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Setup time
             </p>
-            <p className="mt-2 text-lg font-bold text-white">
+            <p className="mt-2 text-lg font-bold text-foreground">
               {template.setupMinutes} minutes
             </p>
           </div>
-          <div className="border border-white/10 bg-white/[0.035] p-5">
+          <div className="border border-border bg-surface p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Campaign goal
             </p>
-            <p className="mt-2 text-lg font-bold text-white">{template.goal}</p>
+            <p className="mt-2 text-lg font-bold text-foreground">{template.goal}</p>
           </div>
         </aside>
 
         <div id="playbook" className="space-y-8">
-          <section className="border border-white/10 bg-white/[0.035] p-6">
-            <h2 className="text-2xl font-black text-white">Campaign Outcome</h2>
-            <p className="mt-3 text-base leading-8 text-zinc-300">
+          <section className="border border-border bg-surface p-6">
+            <h2 className="text-2xl font-black text-foreground">Campaign Outcome</h2>
+            <p className="mt-3 text-base leading-8 text-muted">
               {template.outcome}
             </p>
           </section>
 
-          <section className="border border-white/10 bg-white/[0.035] p-6">
-            <h2 className="text-2xl font-black text-white">Setup Playbook</h2>
+          <section className="border border-border bg-surface p-6">
+            <h2 className="text-2xl font-black text-foreground">Setup Playbook</h2>
             <ol className="mt-5 space-y-3">
               {template.playbook.map((step, index) => (
                 <li key={step} className="grid gap-3 sm:grid-cols-[40px_1fr]">
                   <span className="flex h-8 w-8 items-center justify-center bg-cyan-300 text-sm font-black text-zinc-950">
                     {index + 1}
                   </span>
-                  <span className="text-sm leading-7 text-zinc-300">{step}</span>
+                  <span className="text-sm leading-7 text-muted">{step}</span>
                 </li>
               ))}
             </ol>
           </section>
 
           <section className="grid gap-4 md:grid-cols-2">
-            <div className="border border-white/10 bg-white/[0.035] p-6">
-              <h2 className="text-xl font-black text-white">Best For</h2>
+            <div className="border border-border bg-surface p-6">
+              <h2 className="text-xl font-black text-foreground">Best For</h2>
               <ul className="mt-4 space-y-2">
                 {template.bestFor.map((item) => (
-                  <li key={item} className="text-sm text-zinc-300">
+                  <li key={item} className="text-sm text-muted">
                     {item}
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="border border-white/10 bg-white/[0.035] p-6">
-              <h2 className="text-xl font-black text-white">Metrics To Watch</h2>
+            <div className="border border-border bg-surface p-6">
+              <h2 className="text-xl font-black text-foreground">Metrics To Watch</h2>
               <ul className="mt-4 space-y-2">
                 {template.metrics.map((item) => (
-                  <li key={item} className="text-sm text-zinc-300">
+                  <li key={item} className="text-sm text-muted">
                     {item}
                   </li>
                 ))}
@@ -165,13 +165,13 @@ export default async function TemplateDetailPage({ params }: TemplatePageProps) 
             </div>
           </section>
 
-          <section className="border border-cyan-200/20 bg-cyan-300/10 p-6">
+          <section className="border border-border bg-surface p-6">
             <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
-                <h2 className="text-2xl font-black text-white">
+                <h2 className="text-2xl font-black text-foreground">
                   Copy this campaign into OpenReply
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-zinc-300">
+                <p className="mt-2 text-sm leading-6 text-muted">
                   Sign in, connect Instagram, pick a post or reel, and the
                   template copy will be ready for your campaign draft.
                 </p>

@@ -308,7 +308,7 @@ export default function CampaignsPage() {
           </Link>
           <Link
             href="/campaigns/new"
-            className="px-4 py-2 rounded bg-accent text-sm font-medium text-white hover:bg-accent-hover"
+            className="button-primary"
           >
             New Campaign
           </Link>
@@ -352,7 +352,7 @@ export default function CampaignsPage() {
           </p>
           <Link
             href="/campaigns/new"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded bg-accent text-sm font-semibold text-white hover:bg-accent-hover transition-colors"
+            className="button-primary gap-2"
           >
             Create Campaign
           </Link>
@@ -519,18 +519,15 @@ export default function CampaignsPage() {
               >
                 {/* Toggle */}
                 <button
+                  type="button"
                   onClick={() => toggleActive(auto.id, auto.isActive)}
-                  className={`
-                    relative w-11 h-6 rounded-full transition-colors
-                    ${auto.isActive ? "bg-accent" : "bg-zinc-700"}
-                  `}
+                  role="switch"
+                  aria-checked={auto.isActive}
+                  aria-label={`${auto.isActive ? "Pause" : "Resume"} ${auto.name}`}
+                  data-state={auto.isActive ? "on" : "off"}
+                  className="dashboard-toggle"
                 >
-                  <span
-                    className={`
-                      absolute top-1 w-4 h-4 rounded-full bg-white transition-transform shadow-sm
-                      ${auto.isActive ? "left-6" : "left-1"}
-                    `}
-                  />
+                  <span aria-hidden="true" className="dashboard-toggle-thumb" />
                 </button>
 
                 {/* Kebab menu */}
