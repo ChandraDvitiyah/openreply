@@ -202,20 +202,26 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const lastSyncedAt = accounts
+  const accountSyncTimes = accounts
     .map((account) => account.lastSyncedAt)
     .filter((value): value is string => Boolean(value))
-    .sort()
-    .at(-1) ?? null;
+    .sort();
+  // The dashboard is only as current as its oldest account. Using the newest
+  // timestamp could make one successful account hide another stale one.
+  const lastSyncedAt =
+    accounts.length > 0 && accountSyncTimes.length === accounts.length
+      ? accountSyncTimes[0]
+      : null;
   const stale =
     accounts.length > 0 &&
     (!lastSyncedAt || now.getTime() - new Date(lastSyncedAt).getTime() > 6 * 60 * 60 * 1000);
   const firstName =
     user?.name?.trim().split(/\s+/)[0] || user?.email?.split("@")[0] || null;
 
-  return NextResponse.json({
-    success: true,
-    data: {
+  return NextResponse.json(
+    {
+      success: true,
+      data: {
       userName: firstName,
       workspaceName: workspace?.name ?? "Workspace",
       workspace: {
@@ -265,6 +271,8 @@ export async function GET(request: NextRequest) {
       },
       accounts,
       daily: [...dailyMap.values()],
+      },
     },
-  });
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }

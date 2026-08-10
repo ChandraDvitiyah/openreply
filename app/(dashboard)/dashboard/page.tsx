@@ -14,6 +14,8 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
+import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 
 type DistributionItem = { platform: string; value: number; percent: number };
 
@@ -179,36 +181,52 @@ function DistributionCard({
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardPerformance | null>(null);
+  const dataCache = useDashboardDataCache();
+  const [stats, setStats] = useState<DashboardPerformance | null>(() =>
+    dataCache.get<DashboardPerformance>("performance:30")
+  );
   const [period, setPeriod] = useState(30);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !dataCache.get("performance:30"));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const autoSynced = useRef(new Set<number>());
+  const activePeriod = useRef(30);
+  const refreshSequence = useRef(0);
 
   const fetchStats = useCallback(async (days: number) => {
-    const response = await fetch(`/api/dashboard/stats?days=${days}`);
+    const response = await fetch(`/api/dashboard/stats?days=${days}`, { cache: "no-store" });
     const body = await response.json();
     if (!response.ok || !body.success) throw new Error(body.error ?? "Could not load performance");
-    return body.data as DashboardPerformance;
-  }, []);
+    const data = body.data as DashboardPerformance;
+    dataCache.set(`performance:${days}`, data);
+    return data;
+  }, [dataCache]);
 
-  const refreshMeta = useCallback(async (days: number, manual = false) => {
-    if (manual) setRefreshing(true);
+  const refreshMeta = useCallback(async (days: number) => {
+    const refreshId = ++refreshSequence.current;
+    setRefreshing(true);
     try {
-      const response = await fetch(`/api/dashboard/performance/sync?days=${days}`, { method: "POST" });
+      const response = await fetch(`/api/dashboard/performance/sync?days=${days}`, {
+        method: "POST",
+        cache: "no-store",
+      });
       const body = await response.json();
       if (!response.ok || !body.success) throw new Error(body.error ?? "Could not refresh Meta insights");
-      setStats(await fetchStats(days));
-      setError(
-        body.data.failed > 0
-          ? `${body.data.failed} account${body.data.failed === 1 ? "" : "s"} could not be refreshed. Reconnect it in Settings if this continues.`
-          : null,
-      );
+      const refreshedStats = await fetchStats(days);
+      if (activePeriod.current === days) {
+        setStats(refreshedStats);
+        setError(
+          body.data.failed > 0
+            ? `${body.data.failed} account${body.data.failed === 1 ? "" : "s"} could not be refreshed. Reconnect it in Settings if this continues.`
+            : null,
+        );
+      }
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Could not refresh Meta insights");
+      if (activePeriod.current === days) {
+        setError(refreshError instanceof Error ? refreshError.message : "Could not refresh Meta insights");
+      }
     } finally {
-      if (manual) setRefreshing(false);
+      if (refreshSequence.current === refreshId) setRefreshing(false);
     }
   }, [fetchStats]);
 
@@ -219,7 +237,9 @@ export default function DashboardPage() {
         if (cancelled) return;
         setStats(data);
         setError(null);
-        if (data.connectedAccounts > 0 && data.stale && !autoSynced.current.has(period)) {
+        // Stored snapshots make the page appear quickly; a live sync on every
+        // visit then replaces them with current Meta totals.
+        if (data.connectedAccounts > 0 && !autoSynced.current.has(period)) {
           autoSynced.current.add(period);
           await refreshMeta(period);
         }
@@ -234,17 +254,7 @@ export default function DashboardPage() {
   }, [fetchStats, period, refreshMeta]);
 
   if (loading && !stats) {
-    return (
-      <div className="space-y-4">
-        <div className="h-16 animate-pulse rounded-2xl bg-white" />
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {[0, 1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl bg-white" />)}
-        </div>
-        <div className="grid gap-4 xl:grid-cols-3">
-          {[0, 1, 2].map((item) => <div key={item} className="h-64 animate-pulse rounded-2xl bg-white" />)}
-        </div>
-      </div>
-    );
+    return <DashboardLoadingSkeleton />;
   }
 
   if (!stats) {
@@ -282,8 +292,12 @@ export default function DashboardPage() {
             id="reporting-period"
             value={period}
             onChange={(event) => {
-              setLoading(true);
-              setPeriod(Number(event.target.value));
+              const nextPeriod = Number(event.target.value);
+              const cached = dataCache.get<DashboardPerformance>(`performance:${nextPeriod}`);
+              activePeriod.current = nextPeriod;
+              setStats(cached);
+              setLoading(!cached);
+              setPeriod(nextPeriod);
             }}
             className="h-9 rounded-full border border-[#e6e6e3] bg-white px-3 text-[13px] font-medium text-[#292929]"
           >
@@ -293,16 +307,24 @@ export default function DashboardPage() {
           </select>
           <button
             type="button"
-            onClick={() => refreshMeta(period, true)}
+            onClick={() => refreshMeta(period)}
             disabled={refreshing || stats.connectedAccounts === 0}
             className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             title="Refresh Meta data"
+            aria-label={refreshing ? "Refreshing latest Meta data" : "Refresh Meta data"}
           >
             <RefreshCw aria-hidden="true" size={14} strokeWidth={1.8} className={refreshing ? "animate-spin" : ""} />
             <span className="hidden sm:inline">{refreshing ? "Refreshing" : "Refresh"}</span>
           </button>
         </div>
       </header>
+
+      {refreshing && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-[#dcebd2] bg-[#f4faef] px-4 py-2.5 text-[12px] text-[#5d5d5d]">
+          <RefreshCw aria-hidden="true" size={13} className="animate-spin" />
+          Updating views and engagement with the latest Meta data…
+        </div>
+      )}
 
       {error && (
         <div className="rounded-xl border border-[#e5b8b3] bg-[#fff4f2] px-4 py-3 text-[13px] text-error">{error}</div>

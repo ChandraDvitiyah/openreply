@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import StatusBadge from "@/components/status-badge";
+import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 interface DiagnosticsData {
   queueCounts: Record<string, number>;
@@ -76,15 +78,17 @@ function Section({
 }
 
 export default function DiagnosticsPage() {
-  const [data, setData] = useState<DiagnosticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const dataCache = useDashboardDataCache();
+  const [data, setData] = useState<DiagnosticsData | null>(() => dataCache.get<DiagnosticsData>("diagnostics"));
+  const [loading, setLoading] = useState(() => dataCache.get("diagnostics") === null);
 
   async function refreshDiagnostics() {
     setLoading(true);
-    const response = await fetch("/api/admin/diagnostics");
+    const response = await fetch("/api/admin/diagnostics", { cache: "no-store" });
     const payload = await response.json();
     if (payload.success) {
       setData(payload.data);
+      dataCache.set("diagnostics", payload.data);
     }
     setLoading(false);
   }
@@ -93,10 +97,11 @@ export default function DiagnosticsPage() {
     let active = true;
 
     async function loadInitialDiagnostics() {
-      const response = await fetch("/api/admin/diagnostics");
+      const response = await fetch("/api/admin/diagnostics", { cache: "no-store" });
       const payload = await response.json();
       if (active && payload.success) {
         setData(payload.data);
+        dataCache.set("diagnostics", payload.data);
       }
       if (active) {
         setLoading(false);
@@ -108,10 +113,10 @@ export default function DiagnosticsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [dataCache]);
 
   if (loading && !data) {
-    return <div className="panel rounded p-8 h-64" />;
+    return <DashboardLoadingSkeleton />;
   }
 
   const workerAgeSeconds =

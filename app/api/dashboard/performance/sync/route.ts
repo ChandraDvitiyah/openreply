@@ -16,5 +16,8 @@ export async function POST(request: NextRequest) {
     request.nextUrl.searchParams.get("days")
   );
   const result = await syncWorkspacePerformance(workspaceId, periodDays);
-  return NextResponse.json({ success: true, data: result });
+  return NextResponse.json(
+    { success: true, data: result },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }

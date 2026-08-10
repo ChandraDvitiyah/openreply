@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import {
-  getAllUserMedia,
   getMediaInsights,
+  getUserMediaSince,
   PermissionError,
   type InstagramMedia,
 } from "@/lib/meta/client";
@@ -61,12 +61,10 @@ async function getInstagramMetrics(
   since: Date
 ): Promise<SnapshotMetrics> {
   const accessToken = decryptToken(encryptedToken);
-  const recentMedia = (await getAllUserMedia(accessToken, 250)).filter(
-    (item) => new Date(item.timestamp) >= since
-  );
+  const recentMedia = await getUserMediaSince(accessToken, since, 250);
   let permissionDenied = false;
 
-  const insights = await mapWithConcurrency(recentMedia, 6, async (media) => {
+  const insights = await mapWithConcurrency(recentMedia, 8, async (media) => {
     const metrics = isVideoLike(media)
       ? ["views", "reach", "saved", "shares", "total_interactions"]
       : ["reach", "saved", "shares", "total_interactions"];

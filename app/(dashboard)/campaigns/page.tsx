@@ -11,6 +11,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { readCache, writeCache } from "@/lib/client-cache";
+import { CampaignListLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 interface Campaign {
   id: string;
@@ -62,10 +64,14 @@ interface Campaign {
 
 export default function CampaignsPage() {
   const router = useRouter();
-  const [automations, setAutomations] = useState<Campaign[]>([]);
+  const dataCache = useDashboardDataCache();
+  const [automations, setAutomations] = useState<Campaign[]>(() =>
+    dataCache.get<Campaign[]>("campaigns:all") ?? []
+  );
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(() => dataCache.get("campaigns:all") !== null);
   // postId -> current thumbnail URL, fetched live (Instagram URLs expire, so
   // they are never stored on the campaign).
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -93,16 +99,20 @@ export default function CampaignsPage() {
         { cache: "no-store" }
       );
       const data = await res.json();
-      if (data.success) setAutomations(data.data);
+      if (data.success) {
+        setAutomations(data.data);
+        dataCache.set(`campaigns:${selectedAccountId}`, data.data);
+        setHasLoaded(true);
+      }
     } catch (err) {
       console.error("Failed to fetch campaigns:", err);
     } finally {
       setLoading(false);
     }
-  }, [selectedAccountId]);
+  }, [selectedAccountId, dataCache]);
 
   useEffect(() => {
-    fetch("/api/dashboard/stats")
+    fetch("/api/instagram/accounts", { cache: "no-store" })
       .then((res) => res.json())
       .then((payload) => {
         if (payload.success) setAccounts(payload.data.instagramAccounts ?? []);
@@ -190,6 +200,9 @@ export default function CampaignsPage() {
   }, [playingVideo]);
 
   function handleAccountChange(accountId: string) {
+    const cached = dataCache.get<Campaign[]>(`campaigns:${accountId}`);
+    setAutomations(cached ?? []);
+    setHasLoaded(cached !== null);
     setLoading(true);
     setSelectedAccountId(accountId);
   }
@@ -201,9 +214,11 @@ export default function CampaignsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive }),
       });
-      setAutomations((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, isActive: !isActive } : a))
-      );
+      setAutomations((prev) => {
+        const next = prev.map((a) => (a.id === id ? { ...a, isActive: !isActive } : a));
+        dataCache.set(`campaigns:${selectedAccountId}`, next);
+        return next;
+      });
     } catch (err) {
       console.error("Failed to toggle:", err);
     }
@@ -213,7 +228,11 @@ export default function CampaignsPage() {
     if (!confirm("Delete this campaign? This cannot be undone.")) return;
     try {
       await fetch(`/api/automations?id=${id}`, { method: "DELETE" });
-      setAutomations((prev) => prev.filter((a) => a.id !== id));
+      setAutomations((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        dataCache.set(`campaigns:${selectedAccountId}`, next);
+        return next;
+      });
     } catch (err) {
       console.error("Failed to delete:", err);
     }
@@ -257,14 +276,8 @@ export default function CampaignsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="panel rounded p-6 h-36" />
-        ))}
-      </div>
-    );
+  if (loading && !hasLoaded) {
+    return <CampaignListLoadingSkeleton />;
   }
 
   const query = search.trim().toLowerCase();
@@ -280,7 +293,7 @@ export default function CampaignsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={loading}>
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>

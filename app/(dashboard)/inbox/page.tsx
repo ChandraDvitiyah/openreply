@@ -15,6 +15,10 @@ import AccountSelect, { type AccountOption } from "@/components/account-select";
 import { readCache, writeCache } from "@/lib/client-cache";
 import type { ConversationListItem } from "@/app/api/instagram/conversations/route";
 import type { ThreadMessage } from "@/app/api/instagram/conversations/[id]/route";
+import {
+  ConversationListLoadingSkeleton,
+  MessageLoadingSkeleton,
+} from "@/components/dashboard-loading-skeleton";
 
 const POLL_MS = 12_000;
 // Cached list/threads are shown instantly on revisit, then revalidated in the
@@ -283,7 +287,7 @@ export default function InboxPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {convLoading ? (
-              <p className="px-4 py-6 text-sm text-muted">Loading…</p>
+              <ConversationListLoadingSkeleton />
             ) : convError ? (
               <p className="px-4 py-6 text-sm text-error">{convError}</p>
             ) : conversations.length === 0 ? (
@@ -348,7 +352,7 @@ export default function InboxPage() {
 
               <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
                 {threadLoading && messages.length === 0 ? (
-                  <p className="text-sm text-muted">Loading…</p>
+                  <MessageLoadingSkeleton />
                 ) : messages.length === 0 ? (
                   <p className="text-sm text-muted">No messages.</p>
                 ) : (

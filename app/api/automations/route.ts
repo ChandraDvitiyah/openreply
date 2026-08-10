@@ -153,13 +153,16 @@ export async function GET(request: NextRequest) {
   }
   const instagramAccountId =
     request.nextUrl.searchParams.get("instagramAccountId");
+  const automationId = request.nextUrl.searchParams.get("id");
   const accountFilter =
     instagramAccountId && instagramAccountId !== "all"
       ? { instagramAccountId }
       : {};
+  const automationFilter = automationId ? { id: automationId } : {};
+  const analyticsAutomationFilter = automationId ? { automationId } : {};
 
   const automations = await prisma.automation.findMany({
-    where: { workspaceId, ...accountFilter },
+    where: { workspaceId, ...accountFilter, ...automationFilter },
     include: {
       instagramAccount: {
         select: { username: true, instagramId: true },
@@ -201,17 +204,17 @@ export async function GET(request: NextRequest) {
   const [statusCounts, clickCounts, keywordCounts] = await Promise.all([
     prisma.dmLog.groupBy({
       by: ["automationId", "status"],
-      where: { workspaceId },
+      where: { workspaceId, ...analyticsAutomationFilter },
       _count: { _all: true },
     }),
     prisma.linkClick.groupBy({
       by: ["automationId"],
-      where: { workspaceId },
+      where: { workspaceId, ...analyticsAutomationFilter },
       _count: { _all: true },
     }),
     prisma.dmLog.groupBy({
       by: ["automationId", "matchedKeyword"],
-      where: { workspaceId, matchedKeyword: { not: null } },
+      where: { workspaceId, ...analyticsAutomationFilter, matchedKeyword: { not: null } },
       _count: { _all: true },
     }),
   ]);

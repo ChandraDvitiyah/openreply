@@ -15,8 +15,14 @@ import type {
   VideoAnalyticsPost,
   ViewsAnalyticsResponse,
 } from "@/app/api/views/route";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
+import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 
 type PlatformFilter = "ALL" | "INSTAGRAM" | "FACEBOOK";
+
+function viewsCacheKey(platform: PlatformFilter, accountId: string, days: number) {
+  return `views:${platform}:${accountId}:${days}`;
+}
 
 function formatNumber(value: number | null) {
   if (value === null) return "—";
@@ -106,7 +112,10 @@ function VideoRow({ post }: { post: VideoAnalyticsPost }) {
 }
 
 export default function ViewsPage() {
-  const [data, setData] = useState<ViewsAnalyticsResponse | null>(null);
+  const dataCache = useDashboardDataCache();
+  const [data, setData] = useState<ViewsAnalyticsResponse | null>(() =>
+    dataCache.get<ViewsAnalyticsResponse>(viewsCacheKey("ALL", "all", 30))
+  );
   const [platform, setPlatform] = useState<PlatformFilter>("ALL");
   const [accountId, setAccountId] = useState("all");
   const [days, setDays] = useState(30);
@@ -115,15 +124,17 @@ export default function ViewsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const cacheKey = viewsCacheKey(platform, accountId, days);
     const params = new URLSearchParams({
       platform,
       accountId,
       days: String(days),
     });
-    fetch(`/api/views?${params}`, { signal: controller.signal })
+    fetch(`/api/views?${params}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok || !body.success) throw new Error(body.error ?? "Could not load video analytics");
+        dataCache.set(cacheKey, body.data);
         setData(body.data);
         setError(null);
       })
@@ -135,7 +146,7 @@ export default function ViewsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [platform, accountId, days]);
+  }, [platform, accountId, days, dataCache]);
 
   const visibleAccounts = useMemo(
     () => data?.accounts.filter((account) => platform === "ALL" || account.platform === platform) ?? [],
@@ -143,16 +154,24 @@ export default function ViewsPage() {
   );
 
   function selectPlatform(next: PlatformFilter) {
-    setLoading(true);
-    setPlatform(next);
+    if (next === platform) return;
+    let nextAccountId = accountId;
     if (accountId !== "all") {
       const selected = data?.accounts.find((account) => account.id === accountId);
-      if (selected && next !== "ALL" && selected.platform !== next) setAccountId("all");
+      if (selected && next !== "ALL" && selected.platform !== next) nextAccountId = "all";
     }
+    setData(dataCache.get<ViewsAnalyticsResponse>(viewsCacheKey(next, nextAccountId, days)));
+    setLoading(true);
+    setPlatform(next);
+    setAccountId(nextAccountId);
+  }
+
+  if (loading && !data) {
+    return <DashboardLoadingSkeleton metricCount={6} />;
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={loading}>
       <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-[24px] font-medium text-[#292929]">Video analytics</h1>
@@ -178,8 +197,10 @@ export default function ViewsPage() {
             id="views-account"
             value={accountId}
             onChange={(event) => {
+              const nextAccountId = event.target.value;
+              setData(dataCache.get<ViewsAnalyticsResponse>(viewsCacheKey(platform, nextAccountId, days)));
               setLoading(true);
-              setAccountId(event.target.value);
+              setAccountId(nextAccountId);
             }}
             className="h-9 min-w-40 rounded-full border border-[#e6e6e3] bg-white px-3 text-[13px]"
           >
@@ -193,8 +214,10 @@ export default function ViewsPage() {
             id="views-period"
             value={days}
             onChange={(event) => {
+              const nextDays = Number(event.target.value);
+              setData(dataCache.get<ViewsAnalyticsResponse>(viewsCacheKey(platform, accountId, nextDays)));
               setLoading(true);
-              setDays(Number(event.target.value));
+              setDays(nextDays);
             }}
             className="h-9 rounded-full border border-[#e6e6e3] bg-white px-3 text-[13px]"
           >
@@ -261,7 +284,9 @@ export default function ViewsPage() {
             <h2 className="text-[14px] font-medium text-[#292929]">Video performance</h2>
             <p className="mt-1 text-[12px] text-[#9e9e9e]">Sorted by newest published video</p>
           </div>
-          <span className="text-[12px] text-[#9e9e9e]">{loading ? "Loading…" : `${data?.posts.length ?? 0} videos`}</span>
+          <span role="status" className="text-[12px] text-[#9e9e9e]">
+            {loading ? "Updating latest data…" : `${data?.posts.length ?? 0} videos`}
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-[13px]">

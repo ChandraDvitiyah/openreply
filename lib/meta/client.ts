@@ -519,6 +519,41 @@ export async function getAllUserMedia(
 }
 
 /**
+ * Fetch only media in a reporting window. Instagram returns media newest-first,
+ * so pagination can stop as soon as a page reaches the cutoff instead of
+ * downloading hundreds of old posts that will immediately be discarded.
+ */
+export async function getUserMediaSince(
+  accessToken: string,
+  since: Date,
+  max = 500
+): Promise<InstagramMedia[]> {
+  const results: InstagramMedia[] = [];
+  const first = new URL(`${instagramGraphBase()}/me/media`);
+  first.searchParams.set("fields", MEDIA_FIELDS);
+  first.searchParams.set("limit", String(Math.min(MEDIA_PAGE_SIZE, max)));
+  first.searchParams.set("access_token", accessToken);
+
+  let nextUrl: string | null = first.toString();
+
+  while (nextUrl !== null && results.length < max) {
+    const response: Response = await fetch(nextUrl);
+    const page = await handleResponse<{
+      data: InstagramMedia[];
+      paging?: { next?: string };
+    }>(response);
+    const recent = page.data.filter((item) => new Date(item.timestamp) >= since);
+    results.push(...recent);
+
+    const oldestItem = page.data.at(-1);
+    if (!oldestItem || new Date(oldestItem.timestamp) < since) break;
+    nextUrl = page.paging?.next ?? null;
+  }
+
+  return results.slice(0, max);
+}
+
+/**
  * Fetch per-media insight metrics (views, reach, saved, shares, etc.).
  *
  * Requires the `instagram_business_manage_insights` permission — accounts

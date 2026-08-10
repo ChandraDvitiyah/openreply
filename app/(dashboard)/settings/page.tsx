@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { AccountOption } from "@/components/account-select";
+import { FormLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 interface SettingsData {
   workspace: {
@@ -57,46 +59,53 @@ interface UserProfileData {
   email: string | null;
 }
 
+type SettingsPageCache = {
+  data: SettingsData | null;
+  membersData: WorkspaceMembersData | null;
+  facebookPages: FacebookPageData[];
+  profile: UserProfileData | null;
+};
+
 export default function SettingsPage() {
-  const [data, setData] = useState<SettingsData | null>(null);
+  const dataCache = useDashboardDataCache();
+  const [data, setData] = useState<SettingsData | null>(() => dataCache.get<SettingsPageCache>("settings")?.data ?? null);
   const [membersData, setMembersData] = useState<WorkspaceMembersData | null>(
-    null
+    () => dataCache.get<SettingsPageCache>("settings")?.membersData ?? null
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => dataCache.get("settings") === null);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
-  const [facebookPages, setFacebookPages] = useState<FacebookPageData[]>([]);
-  const [profile, setProfile] = useState<UserProfileData | null>(null);
-  const [displayName, setDisplayName] = useState("");
+  const [facebookPages, setFacebookPages] = useState<FacebookPageData[]>(() => dataCache.get<SettingsPageCache>("settings")?.facebookPages ?? []);
+  const [profile, setProfile] = useState<UserProfileData | null>(() => dataCache.get<SettingsPageCache>("settings")?.profile ?? null);
+  const [displayName, setDisplayName] = useState(() => dataCache.get<SettingsPageCache>("settings")?.profile?.name ?? "");
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/dashboard/stats").then((res) => res.json()),
-      fetch("/api/workspace/members").then((res) => res.json()),
-      fetch("/api/user/profile").then((res) => res.json()),
+      fetch("/api/dashboard/stats", { cache: "no-store" }).then((res) => res.json()),
+      fetch("/api/workspace/members", { cache: "no-store" }).then((res) => res.json()),
+      fetch("/api/user/profile", { cache: "no-store" }).then((res) => res.json()),
+      fetch("/api/facebook/pages", { cache: "no-store" }).then((res) => res.json()),
     ])
-      .then(([statsPayload, membersPayload, profilePayload]) => {
+      .then(([statsPayload, membersPayload, profilePayload, facebookPayload]) => {
         if (statsPayload.success) setData(statsPayload.data);
         if (membersPayload.success) setMembersData(membersPayload.data);
         if (profilePayload.success) {
           setProfile(profilePayload.data);
           setDisplayName(profilePayload.data.name);
         }
+        if (facebookPayload.success) setFacebookPages(facebookPayload.data.pages);
+        dataCache.set("settings", {
+          data: statsPayload.success ? statsPayload.data : null,
+          membersData: membersPayload.success ? membersPayload.data : null,
+          facebookPages: facebookPayload.success ? facebookPayload.data.pages : [],
+          profile: profilePayload.success ? profilePayload.data : null,
+        });
       })
       .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/facebook/pages")
-      .then((response) => response.json())
-      .then((payload) => {
-        if (payload.success) setFacebookPages(payload.data.pages);
-      })
-      .catch(() => setFacebookPages([]));
-  }, []);
+  }, [dataCache]);
 
   async function refreshMembers() {
     const res = await fetch("/api/workspace/members");
@@ -184,7 +193,7 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="panel rounded p-8 h-64" />;
+    return <FormLoadingSkeleton />;
   }
 
   const accounts = data?.instagramAccounts ?? [];

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import {
-  getAllUserMedia,
   getMediaInsights,
+  getUserMediaSince,
   type InstagramMedia,
 } from "@/lib/meta/client";
 import {
@@ -148,10 +148,10 @@ export async function GET(request: NextRequest) {
       jobs.push((async () => {
         try {
           const accessToken = decryptToken(account.accessToken);
-          const media = (await getAllUserMedia(accessToken, 100))
-            .filter((item) => isInstagramVideo(item) && new Date(item.timestamp) >= since)
+          const media = (await getUserMediaSince(accessToken, since, 100))
+            .filter(isInstagramVideo)
             .slice(0, 50);
-          const insights = await mapWithConcurrency(media, 6, async (item) => {
+          const insights = await mapWithConcurrency(media, 8, async (item) => {
             try {
               return await getMediaInsights(accessToken, item.id, [
                 "views",
@@ -208,7 +208,7 @@ export async function GET(request: NextRequest) {
           const posts = (await getFacebookPagePosts(page.pageId, accessToken, since, 100))
             .filter(isFacebookVideo)
             .slice(0, 50);
-          const viewCounts = await mapWithConcurrency(posts, 4, (post) =>
+          const viewCounts = await mapWithConcurrency(posts, 6, (post) =>
             getFacebookPostViews(post.id, accessToken)
           );
 
@@ -282,5 +282,8 @@ export async function GET(request: NextRequest) {
     posts,
     unavailableAccounts,
   };
-  return NextResponse.json({ success: true, data });
+  return NextResponse.json(
+    { success: true, data },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }

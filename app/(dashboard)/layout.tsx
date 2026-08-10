@@ -1,14 +1,24 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import DashboardShell from "@/components/dashboard-shell";
+import { DashboardShellLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <Suspense fallback={<DashboardShellLoadingSkeleton />}>
+      <AuthenticatedDashboardLayout>{children}</AuthenticatedDashboardLayout>
+    </Suspense>
+  );
+}
+
+async function AuthenticatedDashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
 
   if (!session?.user?.id) {

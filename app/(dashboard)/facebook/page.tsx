@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DetailLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 type FacebookPage = {
   id: string;
@@ -34,11 +36,18 @@ type FacebookLog = {
   automation: { name: string };
 };
 
+type FacebookPageData = {
+  pages: FacebookPage[];
+  automations: FacebookAutomation[];
+  logs: FacebookLog[];
+};
+
 export default function FacebookPageAutomation() {
-  const [pages, setPages] = useState<FacebookPage[]>([]);
-  const [automations, setAutomations] = useState<FacebookAutomation[]>([]);
-  const [logs, setLogs] = useState<FacebookLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const dataCache = useDashboardDataCache();
+  const [pages, setPages] = useState<FacebookPage[]>(() => dataCache.get<FacebookPageData>("facebook")?.pages ?? []);
+  const [automations, setAutomations] = useState<FacebookAutomation[]>(() => dataCache.get<FacebookPageData>("facebook")?.automations ?? []);
+  const [logs, setLogs] = useState<FacebookLog[]>(() => dataCache.get<FacebookPageData>("facebook")?.logs ?? []);
+  const [loading, setLoading] = useState(() => dataCache.get("facebook") === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageId, setPageId] = useState("");
@@ -67,8 +76,15 @@ export default function FacebookPageAutomation() {
       setAutomations(automationsPayload.data.automations);
       setLogs(automationsPayload.data.logs);
     }
+    if (pagesPayload.success && automationsPayload.success) {
+      dataCache.set("facebook", {
+        pages: pagesPayload.data.pages,
+        automations: automationsPayload.data.automations,
+        logs: automationsPayload.data.logs,
+      });
+    }
     setLoading(false);
-  }, []);
+  }, [dataCache]);
 
   useEffect(() => {
     // Initial remote hydration is intentionally performed once on mount.
@@ -128,7 +144,7 @@ export default function FacebookPageAutomation() {
     await refresh();
   }
 
-  if (loading) return <div className="panel h-80 rounded-[30px]" />;
+  if (loading) return <DetailLoadingSkeleton />;
 
   return (
     <div className="space-y-10">

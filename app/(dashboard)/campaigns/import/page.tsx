@@ -27,7 +27,7 @@ export default function ImportCampaignsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/dashboard/stats")
+    fetch("/api/instagram/accounts", { cache: "no-store" })
       .then((res) => res.json())
       .then((payload) => {
         if (payload.success) {

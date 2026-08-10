@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
+import { DetailLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 interface Campaign {
   id: string;
@@ -50,9 +52,18 @@ type Tab = "insights" | "preview";
 export default function CampaignDetailPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
+  const dataCache = useDashboardDataCache();
 
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [campaign, setCampaign] = useState<Campaign | null>(() =>
+    dataCache.get<Campaign>(`campaign:${id}`) ??
+    dataCache.get<Campaign[]>("campaigns:all")?.find((item) => item.id === id) ??
+    null
+  );
+  const [loading, setLoading] = useState(
+    () =>
+      dataCache.get<Campaign>(`campaign:${id}`) === null &&
+      !dataCache.get<Campaign[]>("campaigns:all")?.some((item) => item.id === id)
+  );
   const [notFound, setNotFound] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [postThumb, setPostThumb] = useState<string | null>(null);
@@ -61,17 +72,18 @@ export default function CampaignDetailPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/automations", { cache: "no-store" })
+    fetch(`/api/automations?id=${encodeURIComponent(id)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) return setNotFound(true);
-        const found = (payload.data as Campaign[]).find((c) => c.id === id);
+        const found = (payload.data as Campaign[])[0];
         if (!found) return setNotFound(true);
+        dataCache.set(`campaign:${id}`, found);
         setCampaign(found);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, dataCache]);
 
   useEffect(() => {
     if (!campaign) return;
@@ -117,7 +129,7 @@ export default function CampaignDetailPage() {
   }
 
   if (loading) {
-    return <div className="panel h-64 rounded" />;
+    return <DetailLoadingSkeleton />;
   }
   if (notFound || !campaign) {
     return (

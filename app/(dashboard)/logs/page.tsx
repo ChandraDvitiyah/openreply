@@ -9,6 +9,8 @@
 import { useEffect, useState, useCallback } from "react";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import StatusBadge from "@/components/status-badge";
+import { TableLoadingRows } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
 
 interface DmLog {
   id: string;
@@ -39,10 +41,19 @@ const STATUS_FILTERS = [
   "SKIPPED_DEDUP",
 ];
 
+type LogsPageData = { logs: DmLog[]; pagination: Pagination };
+
+function logsCacheKey(page: number, status: string, accountId: string) {
+  return `logs:${page}:${status}:${accountId}`;
+}
+
 export default function LogsPage() {
-  const [logs, setLogs] = useState<DmLog[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const dataCache = useDashboardDataCache();
+  const initialCache = dataCache.get<LogsPageData>(logsCacheKey(1, "ALL", "all"));
+  const [logs, setLogs] = useState<DmLog[]>(() => initialCache?.logs ?? []);
+  const [pagination, setPagination] = useState<Pagination | null>(() => initialCache?.pagination ?? null);
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(() => initialCache !== null);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
@@ -56,21 +67,23 @@ export default function LogsPage() {
         params.set("instagramAccountId", selectedAccountId);
       }
 
-      const res = await fetch(`/api/logs?${params}`);
+      const res = await fetch(`/api/logs?${params}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setLogs(data.data.logs);
         setPagination(data.data.pagination);
+        dataCache.set(logsCacheKey(page, statusFilter, selectedAccountId), data.data);
+        setHasLoaded(true);
       }
     } catch (err) {
       console.error("Failed to fetch logs:", err);
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, selectedAccountId]);
+  }, [page, statusFilter, selectedAccountId, dataCache]);
 
   useEffect(() => {
-    fetch("/api/dashboard/stats")
+    fetch("/api/instagram/accounts", { cache: "no-store" })
       .then((res) => res.json())
       .then((payload) => {
         if (payload.success) setAccounts(payload.data.instagramAccounts ?? []);
@@ -86,15 +99,32 @@ export default function LogsPage() {
   }, [fetchLogs]);
 
   function handleFilterChange(status: string) {
+    const cached = dataCache.get<LogsPageData>(logsCacheKey(1, status, selectedAccountId));
+    setLogs(cached?.logs ?? []);
+    setPagination(cached?.pagination ?? null);
+    setHasLoaded(cached !== null);
     setLoading(true);
     setStatusFilter(status);
     setPage(1);
   }
 
   function handleAccountChange(accountId: string) {
+    const cached = dataCache.get<LogsPageData>(logsCacheKey(1, statusFilter, accountId));
+    setLogs(cached?.logs ?? []);
+    setPagination(cached?.pagination ?? null);
+    setHasLoaded(cached !== null);
     setLoading(true);
     setSelectedAccountId(accountId);
     setPage(1);
+  }
+
+  function handlePageChange(nextPage: number) {
+    const cached = dataCache.get<LogsPageData>(logsCacheKey(nextPage, statusFilter, selectedAccountId));
+    setLogs(cached?.logs ?? []);
+    setPagination(cached?.pagination ?? null);
+    setHasLoaded(cached !== null);
+    setLoading(true);
+    setPage(nextPage);
   }
 
   return (
@@ -143,16 +173,8 @@ export default function LogsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {loading && (
-                <>
-                  {[...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td colSpan={6} className="px-6 py-4">
-                        <div className="h-4 bg-zinc-800 rounded" />
-                      </td>
-                    </tr>
-                  ))}
-                </>
+              {loading && !hasLoaded && (
+                <TableLoadingRows columns={6} rows={5} />
               )}
               {!loading && logs.length === 0 && (
                 <tr>
@@ -161,7 +183,7 @@ export default function LogsPage() {
                   </td>
                 </tr>
               )}
-              {!loading &&
+              {hasLoaded &&
                 logs.map((log) => (
                   <tr key={log.id} className="hover:bg-surface-hover/50 transition-colors">
                     <td className="px-6 py-4">
@@ -206,10 +228,7 @@ export default function LogsPage() {
             <div className="flex items-center gap-2">
               <button
                 disabled={page <= 1}
-                onClick={() => {
-                  setLoading(true);
-                  setPage(page - 1);
-                }}
+                onClick={() => handlePageChange(page - 1)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted border border-border hover:text-foreground hover:border-border-hover transition-all disabled:opacity-30 disabled:pointer-events-none"
               >
                 Previous
@@ -219,10 +238,7 @@ export default function LogsPage() {
               </span>
               <button
                 disabled={page >= pagination.totalPages}
-                onClick={() => {
-                  setLoading(true);
-                  setPage(page + 1);
-                }}
+                onClick={() => handlePageChange(page + 1)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted border border-border hover:text-foreground hover:border-border-hover transition-all disabled:opacity-30 disabled:pointer-events-none"
               >
                 Next

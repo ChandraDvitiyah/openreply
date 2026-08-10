@@ -12,6 +12,12 @@ import { useEffect, useState } from "react";
 import AccountSelect from "@/components/account-select";
 import StatCard from "@/components/stat-card";
 import type { OverviewResponse } from "@/app/api/instagram/overview/route";
+import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { useDashboardDataCache } from "@/components/dashboard-data-cache";
+
+function overviewCacheKey(accountId: string, count: string) {
+  return `overview:${accountId}:${count}`;
+}
 
 function formatNumber(n: number | null): string {
   if (n === null) return "—";
@@ -33,7 +39,10 @@ const COUNT_OPTIONS = [
 ];
 
 export default function OverviewPage() {
-  const [data, setData] = useState<OverviewResponse | null>(null);
+  const dataCache = useDashboardDataCache();
+  const [data, setData] = useState<OverviewResponse | null>(() =>
+    dataCache.get<OverviewResponse>(overviewCacheKey("all", "50"))
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
@@ -45,11 +54,13 @@ export default function OverviewPage() {
       params.set("instagramAccountId", selectedAccountId);
     }
     params.set("count", count);
+    const cacheKey = overviewCacheKey(selectedAccountId, count);
 
-    fetch(`/api/instagram/overview?${params}`)
+    fetch(`/api/instagram/overview?${params}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((res) => {
         if (res.success) {
+          dataCache.set(cacheKey, res.data);
           setData(res.data);
           setError(null);
         } else {
@@ -58,29 +69,22 @@ export default function OverviewPage() {
       })
       .catch(() => setError("Failed to load overview"))
       .finally(() => setLoading(false));
-  }, [selectedAccountId, count]);
+  }, [selectedAccountId, count, dataCache]);
 
   function handleAccountChange(accountId: string) {
+    setData(dataCache.get<OverviewResponse>(overviewCacheKey(accountId, count)));
     setLoading(true);
     setSelectedAccountId(accountId);
   }
 
   function handleCountChange(next: string) {
+    setData(dataCache.get<OverviewResponse>(overviewCacheKey(selectedAccountId, next)));
     setLoading(true);
     setCount(next);
   }
 
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="panel rounded p-5 h-24">
-            <div className="h-4 w-16 bg-zinc-800 rounded" />
-            <div className="mt-3 h-6 w-20 bg-zinc-800/60 rounded" />
-          </div>
-        ))}
-      </div>
-    );
+  if (loading && !data) {
+    return <DashboardLoadingSkeleton metricCount={6} />;
   }
 
   if (error) {
@@ -104,7 +108,7 @@ export default function OverviewPage() {
   const { totals, posts, accounts, insightsAvailable } = data;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" aria-busy={loading}>
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Overview</h1>
@@ -116,6 +120,7 @@ export default function OverviewPage() {
           </p>
         </div>
         <div className="flex items-end gap-3">
+          {loading && <span role="status" className="pb-2 text-xs text-muted">Updating…</span>}
           <label className="flex flex-col gap-2 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               Range

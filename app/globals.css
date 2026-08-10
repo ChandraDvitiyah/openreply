@@ -254,6 +254,25 @@ select:focus-visible {
 .dashboard-ui th { color: var(--dashboard-tertiary); font-size: 12px; font-weight: 500; }
 .dashboard-ui td { font-size: 13px; }
 
+.dashboard-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #ecece8;
+}
+
+.dashboard-skeleton::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  animation: dashboard-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes dashboard-skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
 /* State controls are intentionally separate from action buttons. A previous
    substring selector made an active switch inherit pill-button padding. */
 .dashboard-ui .dashboard-toggle {
@@ -296,5 +315,9 @@ select:focus-visible {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .dashboard-skeleton::after {
+    animation: none;
   }
 }

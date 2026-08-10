@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
+import { DetailLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 import { readCache, writeCache } from "@/lib/client-cache";
 import {
   IMPORT_QUEUE_KEY,
@@ -230,7 +231,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   // Load accounts (both modes need them for the preview username + selector).
   useEffect(() => {
-    fetch("/api/dashboard/stats")
+    fetch("/api/instagram/accounts", { cache: "no-store" })
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) return;
@@ -246,11 +247,11 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   // Prefill when editing.
   useEffect(() => {
     if (mode !== "edit" || !campaignId) return;
-    fetch("/api/automations", { cache: "no-store" })
+    fetch(`/api/automations?id=${encodeURIComponent(campaignId)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((payload) => {
         if (!payload.success) return setNotFound(true);
-        const c = (payload.data as LoadedCampaign[]).find((x) => x.id === campaignId);
+        const c = (payload.data as LoadedCampaign[])[0];
         if (!c) return setNotFound(true);
         setName(c.name);
         setCampaignType(c.type ?? "COMMENT_TO_DM");
@@ -581,7 +582,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }
 
   if (loading) {
-    return <div className="panel h-64 rounded" />;
+    return <DetailLoadingSkeleton />;
   }
 
   if (notFound) {
