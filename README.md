@@ -8,6 +8,9 @@ OpenReply-powered Instagram and Facebook Messenger automation plus a Clerk-prote
 
 Start with [the Kult end-to-end setup guide](docs/KULT_SETUP.md).
 For production hosting, use the operator-driven [deployment runbook](docs/DEPLOYMENT.md).
+For the **current live deployment, a new computer, SSH-key recovery, backups,
+updates, and incident response**, use the canonical
+[production operations handbook](docs/OPERATIONS.md).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/Jurredr/openreply?style=flat&color=black)](https://github.com/Jurredr/openreply/stargazers)

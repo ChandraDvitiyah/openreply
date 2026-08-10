@@ -1,7 +1,13 @@
 # Kult deployment runbook
 
-This runbook is intentionally operator-driven: it prepares Kult for production,
-but no hosting account or application is deployed automatically.
+> **The project is now live using Vercel for the web/API and an Oracle VM for
+> the continuous worker.** This file preserves alternative and first-deployment
+> instructions. For the actual resource names, current commands, new-device
+> setup, SSH-key recovery, backups, and disaster recovery, use
+> [OPERATIONS.md](OPERATIONS.md).
+
+The procedures below remain operator-driven; merely reading or running local
+checks from this file does not deploy another hosting account or application.
 
 Last checked: 8 August 2026.
 

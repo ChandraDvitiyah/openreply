@@ -1,8 +1,15 @@
 # Kult: end-to-end setup
 
+> This guide explains local and Meta setup. The project is now deployed. For
+> current production topology, service inventory, safe updates, a new-device
+> bootstrap, SSH-key reset, and disaster recovery, use
+> [OPERATIONS.md](OPERATIONS.md).
+
 Kult combines the upstream OpenReply Instagram automation engine with a Clerk-protected owner workspace and a SQLite/libSQL Link Studio.
 
-Nothing is deployed automatically. Work through this guide locally first, then use the optional hosting section when the complete flow works.
+The procedures in this guide do not deploy anything automatically. For a fresh
+local environment, work through them locally; do not recreate hosting that is
+already listed in `OPERATIONS.md`.
 
 When local Instagram testing is complete, continue with the detailed
 [production deployment runbook](DEPLOYMENT.md). It covers Hostinger VPS and
