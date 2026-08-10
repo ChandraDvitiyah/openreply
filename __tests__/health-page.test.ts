@@ -62,7 +62,8 @@ describe("health status page", () => {
   it("renders all live services and queue counts", () => {
     const html = renderHealthPage(healthyPayload);
 
-    expect(html).toContain("Everything is running smoothly.");
+    expect(html).toContain("All systems operational");
+    expect(html).toContain("Live component checks");
     expect(html).toContain("Database");
     expect(html).toContain("Redis");
     expect(html).toContain("Message queue");
@@ -86,7 +87,7 @@ describe("health status page", () => {
       },
     });
 
-    expect(html).toContain("Kult is experiencing a disruption.");
+    expect(html).toContain("Some systems are degraded");
     expect(html).toContain("The database check did not complete");
     expect(html).not.toContain("<script>alert");
   });

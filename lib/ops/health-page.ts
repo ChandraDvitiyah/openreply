@@ -85,20 +85,34 @@ function serviceCard(input: {
 }) {
   const statusLabel = input.healthy ? "Operational" : "Degraded";
   const width = input.healthy ? 100 : 12;
+  const segments = Array.from(
+    { length: 36 },
+    () => '<span aria-hidden="true"></span>'
+  ).join("");
 
   return `
-    <article class="service-card ${input.healthy ? "is-up" : "is-down"}">
-      <div class="service-topline">
-        <span class="service-icon">${ICONS[input.icon]}</span>
-        <span class="status-dot" aria-hidden="true"></span>
+    <article class="service-row ${input.healthy ? "is-up" : "is-down"}">
+      <div class="service-heading">
+        <div class="service-name">
+          <span class="service-icon">${ICONS[input.icon]}</span>
+          <div>
+            <h2>${input.label}</h2>
+            <p>${input.detail}</p>
+          </div>
+        </div>
+        <span class="service-status"><span aria-hidden="true"></span>${statusLabel}</span>
       </div>
-      <div class="service-copy">
-        <p class="eyebrow">${input.label}</p>
-        <h2>${statusLabel}</h2>
-        <p class="detail">${input.detail}</p>
+
+      <div class="segment-meter" role="meter" aria-label="${input.label} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}">
+        ${segments}
       </div>
-      <div class="health-meter" role="meter" aria-label="${input.label} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}">
-        <span style="width: ${width}%"></span>
+
+      <div class="meter-caption">
+        <span>Live check</span>
+        <i aria-hidden="true"></i>
+        <strong>${input.healthy ? "100% healthy" : "Attention required"}</strong>
+        <i aria-hidden="true"></i>
+        <span>Now</span>
       </div>
       ${input.extra ?? ""}
     </article>`;
@@ -183,10 +197,9 @@ export function renderHealthPage(data: HealthPageData): string {
         color-scheme: light;
         --ink: #292929;
         --secondary: #5d5d5d;
-        --tertiary: #8b8b85;
-        --paper: #f5f4ee;
-        --surface: rgba(255, 255, 255, .9);
-        --line: #deded7;
+        --tertiary: #8a8a8a;
+        --surface: #ffffff;
+        --line: #e7e7e3;
         --brand: #9ce069;
         --brand-dark: #044340;
         --danger: #b42318;
@@ -200,9 +213,7 @@ export function renderHealthPage(data: HealthPageData): string {
       body {
         min-height: 100vh;
         margin: 0;
-        background:
-          radial-gradient(circle at 50% -10%, rgba(156, 224, 105, .32), transparent 34rem),
-          linear-gradient(180deg, #fbfbf7 0%, var(--paper) 72%);
+        background: var(--surface);
         color: var(--ink);
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
         font-size: 13px;
@@ -212,33 +223,33 @@ export function renderHealthPage(data: HealthPageData): string {
       a { color: inherit; }
 
       .shell {
-        width: min(1040px, calc(100% - 32px));
+        width: min(1120px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 28px 0 48px;
+        padding: 40px 0 64px;
       }
 
       .nav {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: clamp(56px, 9vw, 112px);
+        margin-bottom: clamp(64px, 8vw, 104px);
       }
 
       .brand {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
         text-decoration: none;
-        font-size: 14px;
+        font-size: 20px;
         font-weight: 600;
       }
 
       .brand-mark {
         display: grid;
-        width: 30px;
-        height: 30px;
+        width: 38px;
+        height: 38px;
         place-items: center;
-        border-radius: 10px;
+        border-radius: 12px;
         background: var(--brand-dark);
         color: var(--brand);
         font-weight: 700;
@@ -247,96 +258,121 @@ export function renderHealthPage(data: HealthPageData): string {
 
       .json-link {
         display: inline-flex;
-        min-height: 34px;
+        min-height: 42px;
         align-items: center;
-        border: 1px solid var(--line);
-        border-radius: 999px;
-        background: rgba(255,255,255,.72);
-        padding: 0 14px;
-        color: var(--secondary);
-        text-decoration: none;
-        transition: border-color 160ms ease, background 160ms ease;
-      }
-
-      .json-link:hover { border-color: #a9aaa2; background: #fff; }
-
-      .hero {
-        max-width: 700px;
-        margin: 0 auto 42px;
-        text-align: center;
-      }
-
-      .overall-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 18px;
-        border: 1px solid ${healthy ? "rgba(4,67,64,.15)" : "rgba(180,35,24,.2)"};
-        border-radius: 999px;
-        background: ${healthy ? "rgba(156,224,105,.32)" : "rgba(255,180,168,.38)"};
-        padding: 7px 12px;
-        color: ${healthy ? "var(--brand-dark)" : "var(--danger)"};
-        font-size: 12px;
+        border: 1px solid var(--brand-dark);
+        border-radius: 8px;
+        background: var(--brand-dark);
+        padding: 0 18px;
+        color: #fff;
+        font-size: 11px;
         font-weight: 600;
+        letter-spacing: .14em;
+        text-decoration: none;
+        text-transform: uppercase;
+        transition: background 160ms ease, transform 160ms ease;
       }
 
-      .pulse {
-        width: 7px;
-        height: 7px;
+      .json-link:hover { background: #075a56; transform: translateY(-1px); }
+
+      .overall-banner {
+        display: flex;
+        min-height: 96px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        border: 1px solid ${healthy ? "#86cd51" : "#e98f82"};
+        border-radius: 10px;
+        background: ${healthy ? "var(--brand)" : "var(--danger-soft)"};
+        padding: 24px 28px;
+        color: ${healthy ? "#173412" : "#6f1710"};
+      }
+
+      .overall-copy {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .overall-dot {
+        width: 12px;
+        height: 12px;
+        flex: 0 0 auto;
         border-radius: 50%;
-        background: currentColor;
-        box-shadow: 0 0 0 4px ${healthy ? "rgba(4,67,64,.1)" : "rgba(180,35,24,.1)"};
+        background: ${healthy ? "var(--brand-dark)" : "var(--danger)"};
+        box-shadow: 0 0 0 6px ${healthy ? "rgba(4,67,64,.1)" : "rgba(180,35,24,.12)"};
       }
 
-      h1 {
-        max-width: 640px;
-        margin: 0 auto;
-        font-size: clamp(36px, 6vw, 64px);
+      .overall-banner h1 {
+        margin: 0;
+        font-size: 24px;
         font-weight: 500;
-        line-height: .98;
-        letter-spacing: -.055em;
+        line-height: 1.2;
       }
 
-      .hero p {
-        max-width: 520px;
-        margin: 20px auto 0;
-        color: var(--secondary);
+      .overall-banner p {
+        margin: 0;
+        font-size: 12px;
+        opacity: .72;
+      }
+
+      .section-intro {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin: 86px 0 14px;
+      }
+
+      .section-intro h2 {
+        margin: 0;
         font-size: 14px;
-        line-height: 1.65;
+        font-weight: 500;
+      }
+
+      .section-intro p {
+        margin: 0;
+        color: var(--secondary);
+        font-size: 12px;
       }
 
       .services {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .service-card {
-        min-height: 264px;
-        display: flex;
-        flex-direction: column;
         border: 1px solid var(--line);
-        border-radius: 16px;
-        background: var(--surface);
-        padding: 18px;
-        box-shadow: 0 18px 50px rgba(41,41,41,.045), inset 0 1px 0 rgba(255,255,255,.9);
-        backdrop-filter: blur(14px);
+        border-radius: 10px;
+        overflow: hidden;
       }
 
-      .service-topline {
+      .service-row {
+        padding: 28px 26px 24px;
+        background: #fff;
+      }
+
+      .service-row + .service-row { border-top: 1px solid var(--line); }
+
+      .service-heading {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 36px;
+        gap: 24px;
+        margin-bottom: 20px;
+      }
+
+      .service-name {
+        display: flex;
+        min-width: 0;
+        align-items: center;
+        gap: 12px;
       }
 
       .service-icon {
         display: grid;
-        width: 40px;
-        height: 40px;
+        width: 34px;
+        height: 34px;
+        flex: 0 0 auto;
         place-items: center;
-        border-radius: 13px;
-        background: #f0efe9;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: #fafaf8;
         color: var(--ink);
       }
 
@@ -350,85 +386,96 @@ export function renderHealthPage(data: HealthPageData): string {
         stroke-linejoin: round;
       }
 
-      .status-dot {
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: var(--brand-dark);
-        box-shadow: 0 0 0 5px rgba(4,67,64,.09);
+      .service-name h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
       }
 
-      .is-down .status-dot {
-        background: var(--danger);
-        box-shadow: 0 0 0 5px rgba(180,35,24,.09);
-      }
-
-      .service-copy { min-height: 92px; }
-
-      .eyebrow {
-        margin: 0 0 8px;
+      .service-name p {
+        margin: 4px 0 0;
         color: var(--tertiary);
         font-size: 12px;
       }
 
-      h2 {
-        margin: 0;
-        font-size: 24px;
-        font-weight: 500;
-        line-height: 1.1;
-      }
-
-      .detail {
-        margin: 10px 0 0;
-        color: var(--secondary);
+      .service-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #348025;
         font-size: 12px;
-        line-height: 1.45;
+        font-weight: 500;
       }
 
-      .health-meter {
+      .service-status span {
+        width: 7px;
         height: 7px;
-        margin-top: auto;
-        overflow: hidden;
-        border-radius: 999px;
-        background: #e8e8e2;
+        border-radius: 50%;
+        background: #62bc4b;
       }
 
-      .health-meter span {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, var(--brand-dark), var(--brand));
+      .is-down .service-status { color: var(--danger); }
+      .is-down .service-status span { background: var(--danger); }
+
+      .segment-meter {
+        display: grid;
+        grid-template-columns: repeat(36, minmax(2px, 1fr));
+        gap: 4px;
+        height: 42px;
       }
 
-      .is-down .health-meter span {
-        background: linear-gradient(90deg, var(--danger), var(--danger-soft));
+      .segment-meter span {
+        min-width: 0;
+        border-radius: 2px;
+        background: #75c95c;
+      }
+
+      .is-down .segment-meter span { background: #df7669; }
+
+      .meter-caption {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-top: 12px;
+        color: var(--tertiary);
+        font-size: 11px;
+      }
+
+      .meter-caption i {
+        height: 1px;
+        flex: 1;
+        background: var(--line);
+      }
+
+      .meter-caption strong {
+        color: var(--secondary);
+        font-weight: 500;
+        white-space: nowrap;
       }
 
       .queue-stats {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 5px;
-        margin: 14px 0 0;
+        gap: 8px;
+        margin: 22px 0 0;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
       }
 
       .queue-stats div {
-        display: flex;
-        min-width: 0;
-        flex-direction: column-reverse;
-        gap: 3px;
+        display: grid;
+        gap: 4px;
       }
 
       .queue-stats dt {
-        overflow: hidden;
         color: var(--tertiary);
-        font-size: 10px;
-        text-overflow: ellipsis;
+        font-size: 11px;
       }
 
       .queue-stats dd {
         margin: 0;
-        font-size: 12px;
-        font-weight: 600;
+        font-size: 14px;
+        font-weight: 500;
       }
 
       .footer {
@@ -436,7 +483,7 @@ export function renderHealthPage(data: HealthPageData): string {
         align-items: center;
         justify-content: space-between;
         gap: 24px;
-        margin-top: 22px;
+        margin-top: 20px;
         padding: 0 4px;
         color: var(--tertiary);
         font-size: 12px;
@@ -445,16 +492,22 @@ export function renderHealthPage(data: HealthPageData): string {
       .footer a { color: var(--secondary); text-decoration: none; }
       .footer a:hover { text-decoration: underline; }
 
-      @media (max-width: 860px) {
-        .services { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      }
-
       @media (max-width: 540px) {
-        .shell { width: min(100% - 24px, 1040px); padding-top: 18px; }
-        .nav { margin-bottom: 64px; }
-        .services { grid-template-columns: 1fr; }
-        .service-card { min-height: 226px; }
-        .service-topline { margin-bottom: 28px; }
+        .shell { width: min(100% - 24px, 1120px); padding: 20px 0 40px; }
+        .nav { margin-bottom: 48px; }
+        .brand { font-size: 16px; }
+        .brand-mark { width: 34px; height: 34px; }
+        .json-link { min-height: 38px; padding: 0 13px; font-size: 10px; }
+        .overall-banner { min-height: 104px; align-items: flex-start; flex-direction: column; padding: 22px; }
+        .overall-banner h1 { font-size: 20px; }
+        .section-intro { align-items: flex-start; flex-direction: column; gap: 6px; margin-top: 58px; }
+        .service-row { padding: 22px 18px 20px; }
+        .service-heading { align-items: flex-start; }
+        .service-name p { max-width: 180px; }
+        .segment-meter { gap: 2px; height: 34px; }
+        .meter-caption { gap: 8px; }
+        .meter-caption i { display: none; }
+        .meter-caption strong { margin-left: auto; }
         .footer { align-items: flex-start; flex-direction: column; gap: 8px; }
       }
 
@@ -470,11 +523,18 @@ export function renderHealthPage(data: HealthPageData): string {
         <a class="json-link" href="/api/health?format=json">View JSON</a>
       </nav>
 
-      <section class="hero" aria-labelledby="status-title">
-        <span class="overall-pill"><span class="pulse" aria-hidden="true"></span>${healthy ? "All systems operational" : "Some systems need attention"}</span>
-        <h1 id="status-title">${healthy ? "Everything is running smoothly." : "Kult is experiencing a disruption."}</h1>
-        <p>Live checks across the database, queue, and automation worker. This page refreshes itself every 30 seconds.</p>
+      <section class="overall-banner" aria-labelledby="status-title">
+        <div class="overall-copy">
+          <span class="overall-dot" aria-hidden="true"></span>
+          <h1 id="status-title">${healthy ? "All systems operational" : "Some systems are degraded"}</h1>
+        </div>
+        <p>Updated ${checkedAtLabel} UTC</p>
       </section>
+
+      <div class="section-intro">
+        <h2>Live component checks</h2>
+        <p>Current status · refreshes automatically every 30 seconds</p>
+      </div>
 
       <section class="services" aria-label="Service health">
         ${cards}
