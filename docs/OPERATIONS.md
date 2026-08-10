@@ -47,7 +47,7 @@ Important consequences:
 | Component | Current resource | Notes |
 | --- | --- | --- |
 | Live app | `https://kultreply.vercel.app` | Public URL; no purchased domain |
-| Health | `https://kultreply.vercel.app/api/health` | Must return HTTP 200 and `status: "ok"` |
+| Health | `https://kultreply.vercel.app/api/health` | Browser status page; API clients receive JSON |
 | GitHub fork | `ChandraDvitiyah/openreply` | `origin`; production branch is `main` |
 | Upstream | `Jurredr/openreply` | `upstream`; do not push Kult changes here |
 | Vercel project | `kultreply` | Git-connected to the fork |
@@ -278,6 +278,10 @@ A healthy response has:
 - Redis detail `PONG`;
 - queue `status: "ok"`; and
 - worker `healthy: true` with a recent heartbeat from hostname `kult-worker`.
+
+Opening the same URL in a browser renders a visual status page. Curl and other
+clients that do not request HTML continue to receive JSON. Append
+`?format=json` to force JSON or `?format=html` to force the visual page.
 
 Queue counts need not be zero while real work is in progress. A growing
 `failed` count needs investigation.
