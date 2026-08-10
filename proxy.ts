@@ -6,8 +6,11 @@ export default clerkMiddleware();
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    // Keep the public health route outside Clerk entirely. Development Clerk
+    // instances otherwise perform a browser handshake before the status HTML
+    // can render, which also makes third-party uptime checks less reliable.
+    "/((?!api/health(?:/|$)|_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api(?!/health(?:/|$))|trpc)(.*)",
     "/__clerk/(.*)",
   ],
 };
