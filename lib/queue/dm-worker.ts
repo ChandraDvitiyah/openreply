@@ -41,6 +41,7 @@ import {
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
 import { asStringArray } from "@/lib/utils/string-list";
+import { DEFAULT_PUBLIC_REPLY_MESSAGE } from "@/lib/constants";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -60,6 +61,39 @@ function formatError(error: unknown): string {
     return error.message;
   }
   return "Unknown error";
+}
+
+// Meta occasionally returns a temporary platform error while rendering an
+// otherwise-valid button template. Retrying preserves the intended CTA; an
+// immediate inline-link fallback makes a transient outage permanently degrade
+// the user's message. On the final BullMQ attempt we still fall back so the
+// recipient gets the promised link instead of nothing.
+const TRANSIENT_META_ERROR_CODES = new Set([1, 2, 4, 17, 368]);
+
+function shouldRetryButtonTemplate(error: unknown, job: Job): boolean {
+  if (
+    !(error instanceof MetaApiError) ||
+    !TRANSIENT_META_ERROR_CODES.has(error.code)
+  ) {
+    return false;
+  }
+
+  const maxAttempts = job.opts?.attempts ?? 3;
+  return job.attemptsMade + 1 < maxAttempts;
+}
+
+function buildInlineLinkFallback({
+  message,
+  commenterName,
+  trackedUrl,
+}: {
+  message: string;
+  commenterName?: string | null;
+  trackedUrl: string;
+}): string {
+  const body =
+    renderMessageWithoutLink({ message, commenterName }) || "Here's your link:";
+  return `${body}\n\n${trackedUrl}`;
 }
 
 /**
@@ -266,7 +300,9 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
         ? publicReplyMessages
         : automation.publicReplyMessage
           ? [automation.publicReplyMessage]
-          : [];
+          : automation.publicReplyEnabled
+            ? [DEFAULT_PUBLIC_REPLY_MESSAGE]
+            : [];
     if (
       automation.publicReplyEnabled &&
       replyPool.length > 0 &&
@@ -464,17 +500,25 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             trackedUrl
           );
         } catch (buttonError) {
-          // Button template rejected; send as text with inline link instead.
+          if (shouldRetryButtonTemplate(buttonError, job)) {
+            console.warn(
+              "[DM Worker] Button template temporarily unavailable; retrying job:",
+              formatError(buttonError)
+            );
+            throw buttonError;
+          }
+
+          // A permanent rejection (or the final retry) still delivers the
+          // promised link, on its own line so Instagram renders it cleanly.
           console.log(
             "[DM Worker] Button template rejected, falling back to inline link:",
             formatError(buttonError)
           );
-          const fallbackMessage =
-            renderMessageWithTracking({
-              message: dmMessageText,
-              commenterName,
-              trackedLinks: [automation.trackedLinks[0]],
-            }) || `${bodyText}\n${trackedUrl}`;
+          const fallbackMessage = buildInlineLinkFallback({
+            message: dmMessageText,
+            commenterName,
+            trackedUrl,
+          });
           await sendPrivateReply(
             accessToken,
             automation.instagramAccount.instagramId,
@@ -630,17 +674,25 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
           trackedUrl
         );
       } catch (buttonError) {
-        // Button template rejected; send as text with inline link instead.
+        if (shouldRetryButtonTemplate(buttonError, job)) {
+          console.warn(
+            "[DM Worker] Postback button temporarily unavailable; retrying job:",
+            formatError(buttonError)
+          );
+          throw buttonError;
+        }
+
+        // A permanent rejection (or the final retry) still delivers a clean,
+        // tappable URL rather than dropping the reveal entirely.
         console.log(
           "[DM Worker] Button template rejected in postback, falling back to inline link:",
           formatError(buttonError)
         );
-        const fallbackMessage =
-          renderMessageWithTracking({
-            message: dmMessageText,
-            commenterName,
-            trackedLinks: [primaryLink],
-          }) || `${bodyText}\n${trackedUrl}`;
+        const fallbackMessage = buildInlineLinkFallback({
+          message: dmMessageText,
+          commenterName,
+          trackedUrl,
+        });
         await sendDirectMessage(
           accessToken,
           automation.instagramAccount.instagramId,
@@ -880,16 +932,23 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
             trackedUrl
           );
         } catch (buttonError) {
+          if (shouldRetryButtonTemplate(buttonError, job)) {
+            console.warn(
+              "[DM Worker] Auto-responder button temporarily unavailable; retrying job:",
+              formatError(buttonError)
+            );
+            throw buttonError;
+          }
+
           console.log(
             "[DM Worker] Button template rejected in auto-responder, falling back to inline link:",
             formatError(buttonError)
           );
-          const fallbackMessage =
-            renderMessageWithTracking({
-              message: dmMessageText,
-              commenterName: null,
-              trackedLinks: [primaryLink],
-            }) || `${bodyText}\n${trackedUrl}`;
+          const fallbackMessage = buildInlineLinkFallback({
+            message: dmMessageText,
+            commenterName: null,
+            trackedUrl,
+          });
           await sendDirectMessage(
             accessToken,
             automation.instagramAccount.instagramId,

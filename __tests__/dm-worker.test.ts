@@ -116,6 +116,7 @@ vi.mock("bullmq", () => {
 });
 
 import { createDMWorker } from "../lib/queue/dm-worker";
+import { MetaApiError } from "../lib/meta/client";
 
 const usagePeriodStart = new Date("2026-05-01T00:00:00.000Z");
 
@@ -495,6 +496,84 @@ describe("DM Worker — Full Pipeline", () => {
       "Hey commenter_user! Here is the offer:",
       "Get offer",
       "http://localhost:3000/r/abc123"
+    );
+  });
+
+  it("uses a real default when public replies are enabled without saved text", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        publicReplyEnabled: true,
+        publicReplyMessage: null,
+        publicReplyMessages: [],
+      },
+    ]);
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    expect(mockSendCommentReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "comment_555",
+      "Sent you a DM! 📩"
+    );
+    expect(mockSendPrivateReply).toHaveBeenCalled();
+  });
+
+  it("retries a transient Meta button error instead of degrading immediately", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        dmMessage: "Here is your offer: {link}",
+        linkButtonLabel: "Get offer",
+        trackedLinks: [
+          { slug: "abc123", destinationUrl: "https://example.com" },
+        ],
+      },
+    ]);
+    mockSendPrivateReplyWithLinkButton.mockRejectedValue(
+      new MetaApiError(2, 1545133, "trace-id", "Service temporarily unavailable")
+    );
+
+    const processor = getProcessor();
+    await expect(processor(createMockJob())).rejects.toThrow(
+      "Service temporarily unavailable"
+    );
+
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalledWith(
+      "workspace_123",
+      usagePeriodStart
+    );
+  });
+
+  it("uses a clean inline URL on the final button attempt", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...mockAutomation,
+        dmMessage: "Here is your offer: {link}",
+        linkButtonLabel: "Get offer",
+        trackedLinks: [
+          { slug: "abc123", destinationUrl: "https://example.com" },
+        ],
+      },
+    ]);
+    mockSendPrivateReplyWithLinkButton.mockRejectedValue(
+      new MetaApiError(2, 1545133, "trace-id", "Service temporarily unavailable")
+    );
+
+    const processor = getProcessor();
+    await processor({
+      ...createMockJob(),
+      attemptsMade: 2,
+      opts: { attempts: 3 },
+    } as never);
+
+    expect(mockSendPrivateReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "ig_456",
+      "comment_555",
+      "Here is your offer:\n\nhttp://localhost:3000/r/abc123"
     );
   });
 });

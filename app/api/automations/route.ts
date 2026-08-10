@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { MAX_KEYWORDS } from "@/lib/constants";
+import {
+  DEFAULT_PUBLIC_REPLY_MESSAGE,
+  MAX_KEYWORDS,
+} from "@/lib/constants";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
 import { buildTrackedUrl } from "@/lib/tracking/message";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
 import { buildReportUrl, generateReportShareSlug } from "@/lib/reports/share";
+import { asStringArray } from "@/lib/utils/string-list";
 import {
   canManageWorkspace,
   getCurrentWorkspaceContext,
@@ -400,6 +404,10 @@ export async function POST(request: NextRequest) {
   )
     .map((m) => m.trim())
     .filter(Boolean);
+  const normalizedPublicReplyList =
+    publicReplyEnabled && publicReplyList.length === 0
+      ? [DEFAULT_PUBLIC_REPLY_MESSAGE]
+      : publicReplyList;
 
   // Reply-DM variants. One is picked at random per send; the primary dmMessage
   // stays in sync as the first variant for back-compat. A comment-to-comment
@@ -444,9 +452,11 @@ export async function POST(request: NextRequest) {
         ? null
         : parsed.data.linkButtonLabel || null,
       publicReplyEnabled,
-      publicReplyMessages: publicReplyEnabled ? publicReplyList : [],
+      publicReplyMessages: publicReplyEnabled
+        ? normalizedPublicReplyList
+        : [],
       publicReplyMessage: publicReplyEnabled
-        ? publicReplyList[0] ?? parsed.data.publicReplyMessage ?? null
+        ? normalizedPublicReplyList[0]
         : null,
       isActive: parsed.data.isActive,
       wholeWordMatch: parsed.data.wholeWordMatch,
@@ -597,6 +607,15 @@ export async function PATCH(request: NextRequest) {
   if (automationData.publicReplyEnabled === false) {
     automationData.publicReplyMessages = [];
     automationData.publicReplyMessage = null;
+  } else if (
+    automationData.publicReplyEnabled === true &&
+    (automationData.publicReplyMessages?.length ?? 0) === 0 &&
+    !automationData.publicReplyMessage?.trim() &&
+    !existing.publicReplyMessage?.trim() &&
+    asStringArray(existing.publicReplyMessages).length === 0
+  ) {
+    automationData.publicReplyMessages = [DEFAULT_PUBLIC_REPLY_MESSAGE];
+    automationData.publicReplyMessage = DEFAULT_PUBLIC_REPLY_MESSAGE;
   }
 
   const updated = await prisma.automation.update({

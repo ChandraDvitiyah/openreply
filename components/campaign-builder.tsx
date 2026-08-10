@@ -24,6 +24,7 @@ import {
   IMPORT_ACCOUNT_KEY,
   type ImportRow,
 } from "@/lib/import-queue";
+import { DEFAULT_PUBLIC_REPLY_MESSAGE } from "@/lib/constants";
 
 type TriggerScope = "specific" | "any" | "next" | "futureReels";
 type MatchMode = "specific" | "any";
@@ -167,7 +168,9 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const [keywordInput, setKeywordInput] = useState("");
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
-  const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([""]);
+  const [publicReplyMessages, setPublicReplyMessages] = useState<string[]>([
+    DEFAULT_PUBLIC_REPLY_MESSAGE,
+  ]);
 
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
@@ -276,7 +279,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             ? c.publicReplyMessages
             : c.publicReplyMessage
               ? [c.publicReplyMessage]
-              : [""]
+              : [DEFAULT_PUBLIC_REPLY_MESSAGE]
         );
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
@@ -847,7 +850,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             </span>
             <Toggle
               on={publicReplyEnabled}
-              onToggle={() => setPublicReplyEnabled(!publicReplyEnabled)}
+              onToggle={() => {
+                const enabled = !publicReplyEnabled;
+                setPublicReplyEnabled(enabled);
+                if (
+                  enabled &&
+                  publicReplyMessages.every((message) => !message.trim())
+                ) {
+                  setPublicReplyMessages([DEFAULT_PUBLIC_REPLY_MESSAGE]);
+                }
+              }}
               label="Public comment reply"
             />
           </div>
@@ -868,7 +880,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                         prev.map((m, idx) => (idx === i ? e.target.value : m))
                       )
                     }
-                    placeholder="Sent you a DM! 📩"
+                    placeholder={DEFAULT_PUBLIC_REPLY_MESSAGE}
                     maxLength={1000}
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
                   />
