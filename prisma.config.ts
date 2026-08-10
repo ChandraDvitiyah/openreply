@@ -6,9 +6,12 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    path: "prisma/turso-migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Prisma Migrate cannot apply schema changes over libSQL's remote HTTP
+    // transport. Generate migrations against this local SQLite shadow file,
+    // then apply them to Turso with scripts/apply-turso-migrations.ts.
+    url: process.env["LOCAL_DATABASE_URL"] ?? "file:./data/kult-prisma.db",
   },
 });

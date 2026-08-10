@@ -7,7 +7,7 @@ export function generateTrackedLinkSlug() {
 export function hashClickIp(ipAddress: string | null | undefined) {
   if (!ipAddress) return null;
 
-  const salt = process.env.NEXTAUTH_SECRET ?? "campaigncue-click-salt";
+  const salt = process.env.ENCRYPTION_KEY ?? "kult-click-salt";
   return createHash("sha256").update(`${salt}:${ipAddress}`).digest("hex");
 }
 

@@ -5,6 +5,7 @@ import {
   summarizeDmStatuses,
 } from "@/lib/tracking/analytics";
 import { buildReportUrl, isReportBranded } from "@/lib/reports/share";
+import { asStringArray } from "@/lib/utils/string-list";
 
 function getHostname(url: string) {
   try {
@@ -161,7 +162,7 @@ export async function getCampaignReportBySlug(shareSlug: string) {
       name: automation.name,
       goal: automation.goal,
       postUrl: automation.postUrl,
-      keywords: automation.keywords,
+      keywords: asStringArray(automation.keywords),
       isActive: automation.isActive,
       createdAt: automation.createdAt,
       updatedAt: automation.updatedAt,

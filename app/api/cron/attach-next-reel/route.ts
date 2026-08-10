@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { getUserMedia, type InstagramMedia } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
+import { syncAutoReelTargets } from "@/lib/polling/auto-reel-targets";
 
 /**
  * Binds "next reel" campaigns to a real post.
@@ -19,14 +20,16 @@ function isReel(media: InstagramMedia): boolean {
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET || process.env.NEXTAUTH_SECRET;
+  const cronSecret = process.env.CRON_SECRET;
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  const persistent = await syncAutoReelTargets();
 
   const pending = await prisma.automation.findMany({
     where: { pendingNextReel: true },
@@ -90,6 +93,11 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    data: { checked, bound, failedAccounts: failures.length },
+    data: {
+      checked,
+      bound,
+      failedAccounts: failures.length,
+      autoReels: persistent,
+    },
   });
 }

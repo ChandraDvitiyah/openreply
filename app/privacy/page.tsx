@@ -2,26 +2,28 @@ import type { Metadata } from "next";
 import LegalShell from "@/components/legal-shell";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy - OpenReply",
+  title: "Privacy Policy - Kult",
   description:
-    "How OpenReply handles Instagram account data, webhook payloads, billing data, and customer campaign information.",
+    "How Kult handles authentication, Instagram account data, webhook payloads, links, clicks, and campaign information.",
 };
 
 export default function PrivacyPage() {
+  const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
+
   return (
     <LegalShell
       title="Privacy Policy"
-      description="OpenReply helps businesses send Meta-compliant private replies when people comment on connected Instagram posts or reels."
-      updatedAt="May 24, 2026"
+      description="This policy explains how Kult processes information when you connect Instagram accounts, automate comment replies, and publish a link-in-bio page."
+      updatedAt="August 4, 2026"
     >
       <section>
         <h2 className="text-xl font-bold text-white">Data We Collect</h2>
         <p className="mt-3">
-          We collect account email addresses for authentication, workspace and
-          billing metadata, connected Instagram account identifiers, encrypted
-          Instagram access tokens, campaign settings, webhook payloads,
-          comments needed to process campaigns, delivery logs, and operational
-          diagnostics.
+          We collect the identity information supplied through Clerk,
+          workspace metadata, connected Instagram account identifiers,
+          encrypted Instagram access tokens, campaign settings, webhook events,
+          comments needed to evaluate campaigns, delivery logs, public bio-page
+          content, link clicks, and operational diagnostics.
         </p>
       </section>
 
@@ -38,7 +40,7 @@ export default function PrivacyPage() {
       <section>
         <h2 className="text-xl font-bold text-white">Instagram And Meta Data</h2>
         <p className="mt-3">
-          OpenReply does not ask for Instagram passwords, scrape Instagram, or
+          Kult does not ask for Instagram passwords, scrape Instagram, or
           use browser automation. Instagram tokens are encrypted at rest and are
           used only to perform actions authorized by the connected business
           account.
@@ -48,27 +50,36 @@ export default function PrivacyPage() {
       <section>
         <h2 className="text-xl font-bold text-white">Subprocessors</h2>
         <p className="mt-3">
-          The production service may use hosting, database, Redis queue, email,
-          and observability providers such as Vercel, Railway, PostgreSQL,
-          Redis, and Resend. These providers process data only as needed to run
-          the service.
+          The service uses Clerk for authentication, Meta for Instagram access,
+          Turso/libSQL for application data, Upstash Redis for queued work, and
+          may use a hosting and monitoring provider to operate automations.
+          Each provider processes data only as needed to provide its service.
         </p>
       </section>
 
       <section>
         <h2 className="text-xl font-bold text-white">Retention And Deletion</h2>
         <p className="mt-3">
-          Customers can disconnect Instagram from settings, which removes the
-          stored Instagram connection and stops campaigns. For account or data
-          deletion, follow the Data Deletion page linked from the footer.
+          Instagram comments and identifiers are retained only as needed for
+          delivery, deduplication, reporting, abuse prevention, and debugging.
+          Disconnecting Instagram removes the stored connection and stops its
+          campaigns. Follow the Data Deletion page for full deletion steps.
         </p>
       </section>
 
       <section>
         <h2 className="text-xl font-bold text-white">Contact</h2>
         <p className="mt-3">
-          For privacy questions, contact the repository owner through GitHub or
-          the support email configured for the hosted OpenReply service.
+          For privacy questions or a deletion request,{" "}
+          {supportEmail ? (
+            <a className="text-accent underline" href={`mailto:${supportEmail}`}>
+              contact {supportEmail}
+            </a>
+          ) : (
+            "use the contact email listed for Kult in its Meta app listing"
+          )}
+          . The operator must publish a monitored support address before making
+          the Meta app public.
         </p>
       </section>
     </LegalShell>

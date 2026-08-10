@@ -1,50 +1,60 @@
-import NextAuth, { type NextAuthConfig } from "next-auth";
-import Resend from "next-auth/providers/resend";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import { auth as clerkAuth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 
-type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
+type KultSession = {
+  user: {
+    id: string;
+    email: string | null;
+    name: string | null;
+    image: string | null;
+  };
+};
 
-export const authConfig = {
-  adapter: PrismaAdapter(prisma as unknown as AdapterPrismaClient),
-  providers: [
-    Resend({
-      apiKey: process.env.RESEND_API_KEY ?? "missing-resend-api-key",
-      from: process.env.EMAIL_FROM ?? "OpenReply <login@example.com>",
-    }),
-  ],
-  callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-      }
-      return session;
-    },
-  },
-  events: {
-    async createUser({ user }) {
-      if (user.id) {
-        await ensureWorkspaceForUser(user.id, user.email);
-      }
-    },
-  },
-  pages: {
-    signIn: "/login",
-    verifyRequest: "/verify-request",
-  },
-  session: {
-    strategy: "database",
-  },
-  trustHost: true,
-  secret: process.env.NEXTAUTH_SECRET,
-} satisfies NextAuthConfig;
+async function syncClerkUser(userId: string) {
+  const existing = await prisma.user.findUnique({ where: { id: userId } });
+  if (existing) return existing;
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+  const user = await currentUser();
+  if (!user || user.id !== userId) return null;
+
+  const email = user.primaryEmailAddress?.emailAddress ?? null;
+  return prisma.user.upsert({
+    where: { id: userId },
+    update: {
+      name: user.fullName,
+      email,
+      image: user.imageUrl,
+    },
+    create: {
+      id: userId,
+      name: user.fullName,
+      email,
+      image: user.imageUrl,
+    },
+  });
+}
+
+// Compatibility wrapper so the upstream OpenReply routes keep their existing
+// session-shaped contract while Clerk owns authentication.
+export async function auth(): Promise<KultSession | null> {
+  const { userId } = await clerkAuth();
+  if (!userId) return null;
+
+  const user = await syncClerkUser(userId);
+  return {
+    user: {
+      id: userId,
+      email: user?.email ?? null,
+      name: user?.name ?? null,
+      image: user?.image ?? null,
+    },
+  };
+}
 
 export async function getCurrentUserId(): Promise<string | null> {
-  const session = await auth();
-  return session?.user?.id ?? null;
+  const { userId } = await clerkAuth();
+  return userId;
 }
 
 export async function getCurrentWorkspaceId(): Promise<string | null> {
@@ -54,11 +64,7 @@ export async function getCurrentWorkspaceId(): Promise<string | null> {
   const workspace = await getPrimaryWorkspace(userId);
   if (workspace) return workspace.id;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true },
-  });
-
+  const user = await syncClerkUser(userId);
   const createdWorkspace = await ensureWorkspaceForUser(userId, user?.email);
   return createdWorkspace.id;
 }

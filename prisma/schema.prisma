@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 model User {
@@ -78,7 +78,11 @@ model Workspace {
   members           WorkspaceMember[]
   invitations       WorkspaceInvitation[]
   instagramAccounts InstagramAccount[]
+  facebookPages      FacebookPage[]
   automations       Automation[]
+  facebookAutomations FacebookAutomation[]
+  facebookMessageLogs FacebookMessageLog[]
+  performanceSnapshots SocialPerformanceSnapshot[]
   dmLogs            DmLog[]
   trackedLinks      TrackedLink[]
   linkClicks        LinkClick[]
@@ -144,6 +148,107 @@ model InstagramAccount {
   @@index([workspaceId])
 }
 
+model FacebookPage {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  pageId            String   @unique
+  name              String
+  accessToken       String
+  webhookSubscribed Boolean  @default(false)
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automations FacebookAutomation[]
+  messageLogs FacebookMessageLog[]
+
+  @@index([workspaceId])
+}
+
+model FacebookAutomation {
+  id             String                 @id @default(cuid())
+  workspaceId    String
+  facebookPageId String
+  type           FacebookAutomationType @default(MESSENGER_AUTORESPONDER)
+  name           String
+  postId         String?
+  matchAnyPost   Boolean                @default(true)
+  keywords       Json                   @default("[]")
+  matchAnyWord   Boolean                @default(false)
+  replyMessage   String
+  wholeWordMatch Boolean                @default(true)
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage FacebookPage         @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+  messageLogs  FacebookMessageLog[]
+
+  @@index([workspaceId])
+  @@index([facebookPageId])
+  @@index([postId])
+}
+
+model FacebookMessageLog {
+  id             String              @id @default(cuid())
+  workspaceId    String
+  automationId   String
+  facebookPageId String
+  senderId       String
+  senderName     String?
+  triggerId      String
+  triggerText    String
+  triggerType    FacebookTriggerType
+  matchedKeyword String?
+  status         DmStatus            @default(PENDING)
+  attempts       Int                 @default(0)
+  sentAt         DateTime?
+  errorMessage   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  workspace    Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automation   FacebookAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  facebookPage FacebookPage       @relation(fields: [facebookPageId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, triggerId])
+  @@index([workspaceId])
+  @@index([facebookPageId])
+  @@index([status])
+}
+
+// One rolling snapshot per platform account, reporting window, and UTC day.
+// The current day is updated during refreshes; older rows become the durable
+// history used for trends without repeatedly querying Meta.
+model SocialPerformanceSnapshot {
+  id                String         @id @default(cuid())
+  workspaceId       String
+  platform          SocialPlatform
+  accountInternalId String
+  accountExternalId String
+  accountName       String
+  periodDays        Int            @default(30)
+  capturedDate      String
+  contentCount      Int            @default(0)
+  views             Int?
+  reach             Int?
+  likes             Int?
+  comments          Int?
+  saves              Int?
+  shares             Int?
+  interactions       Int?
+  insightsAvailable Boolean        @default(false)
+  capturedAt         DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, accountInternalId, periodDays, capturedDate])
+  @@index([workspaceId, periodDays, capturedAt])
+  @@index([workspaceId, platform, periodDays])
+}
+
 model Automation {
   id                 String   @id @default(cuid())
   workspaceId        String
@@ -165,20 +270,25 @@ model Automation {
   postUrl        String?
   pendingNextReel Boolean @default(false)
   matchAnyPost   Boolean @default(false)
-  keywords       String[]
+  // Keep this campaign attached to every reel published after it is enabled.
+  // Targets are materialized in AutomationMedia so older reels remain active.
+  autoAddNewReels Boolean @default(false)
+  autoAddReelsSince DateTime?
+  // SQLite/libSQL has no array type, so these string lists are stored as JSON.
+  keywords       Json @default("[]")
   matchAnyWord   Boolean @default(false)
   // dmMessage is the primary reply text (kept for back-compat and as the
   // legacy single field). dmMessages holds all variants; one is picked at
   // random per send. When dmMessages is empty, dmMessage is used.
   dmMessage      String
-  dmMessages     String[] @default([])
+  dmMessages     Json @default("[]")
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
   openingDmButtonLabel String?
   linkButtonLabel      String?
   publicReplyEnabled Boolean @default(false)
   publicReplyMessage String?
-  publicReplyMessages String[] @default([])
+  publicReplyMessages Json @default("[]")
   isActive       Boolean @default(true)
   wholeWordMatch Boolean @default(true)
   reportShareSlug    String? @unique
@@ -192,10 +302,26 @@ model Automation {
   dmLogs           DmLog[]
   trackedLinks     TrackedLink[]
   linkClicks       LinkClick[]
+  mediaTargets     AutomationMedia[]
 
   @@index([workspaceId])
   @@index([instagramAccountId])
   @@index([postId])
+}
+
+model AutomationMedia {
+  id           String   @id @default(cuid())
+  automationId String
+  mediaId      String
+  mediaUrl     String?
+  publishedAt  DateTime?
+  discoveredAt DateTime @default(now())
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@unique([automationId, mediaId])
+  @@index([mediaId])
+  @@index([automationId, publishedAt])
 }
 
 model DmLog {
@@ -330,6 +456,21 @@ enum CampaignType {
   COMMENT_TO_DM
   DM_AUTORESPONDER
   COMMENT_TO_COMMENT
+}
+
+enum FacebookAutomationType {
+  MESSENGER_AUTORESPONDER
+  COMMENT_TO_MESSAGE
+}
+
+enum FacebookTriggerType {
+  MESSAGE
+  COMMENT
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  FACEBOOK
 }
 
 enum WorkspaceRole {

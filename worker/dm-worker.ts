@@ -1,7 +1,11 @@
 import { createDMWorker } from "@/lib/queue/dm-worker";
+import { loadEnvConfig } from "@next/env";
 import { recordWorkerHeartbeat } from "@/lib/ops/worker-health";
 import { reconcileComments } from "@/lib/polling/comment-reconciler";
+import { syncAllWorkspacePerformance } from "@/lib/performance/social-sync";
 import os from "node:os";
+
+loadEnvConfig(process.cwd());
 
 const worker = createDMWorker();
 const startedAt = new Date().toISOString();
@@ -10,6 +14,9 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 // it must fire every few minutes and Vercel's free crons only run once a day.
 const POLL_INTERVAL_MS = Number(
   process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
+);
+const PERFORMANCE_SYNC_INTERVAL_MS = Number(
+  process.env.PERFORMANCE_SYNC_INTERVAL_MS ?? 12 * 60 * 60_000
 );
 
 console.log("[DM Worker] Started");
@@ -43,10 +50,30 @@ async function poll() {
 setTimeout(() => void poll(), 10_000);
 const pollTimer = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
+async function syncPerformance() {
+  try {
+    const results = await syncAllWorkspacePerformance(30);
+    const accounts = results.reduce((sum, result) => sum + result.synced, 0);
+    const failures = results.reduce((sum, result) => sum + result.failed, 0);
+    console.log(`[Performance Sync] ${accounts} accounts refreshed, ${failures} failed`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[Performance Sync] Failed:", message);
+  }
+}
+
+// Refresh the 30-day snapshot even when nobody opens the dashboard.
+setTimeout(() => void syncPerformance(), 30_000);
+const performanceSyncTimer = setInterval(
+  () => void syncPerformance(),
+  PERFORMANCE_SYNC_INTERVAL_MS
+);
+
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
+  clearInterval(performanceSyncTimer);
   await worker.close();
   process.exit(0);
 }

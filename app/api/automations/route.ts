@@ -32,6 +32,7 @@ const createAutomationSchema = z
     postUrl: z.string().url().optional().nullable(),
     pendingNextReel: z.boolean().optional().default(false),
     matchAnyPost: z.boolean().optional().default(false),
+    autoAddNewReels: z.boolean().optional().default(false),
     keywords: z
       .array(z.string().min(1).max(50))
       .max(MAX_KEYWORDS)
@@ -72,6 +73,7 @@ const createAutomationSchema = z
       d.type === "DM_AUTORESPONDER" ||
       d.matchAnyPost ||
       d.pendingNextReel ||
+      d.autoAddNewReels ||
       Boolean(d.postId),
     { message: "Choose which post(s) trigger the campaign", path: ["postId"] }
   )
@@ -116,6 +118,7 @@ const updateAutomationSchema = z.object({
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
   matchAnyPost: z.boolean().optional(),
+  autoAddNewReels: z.boolean().optional(),
   keywords: z.array(z.string().min(1).max(50)).max(MAX_KEYWORDS).optional(),
   matchAnyWord: z.boolean().optional(),
   // Empty is allowed so a comment-to-comment campaign (which has no DM) can
@@ -368,6 +371,7 @@ export async function POST(request: NextRequest) {
   // A DM auto-responder has no post trigger, public reply, or opening DM.
   const pendingNextReel = isDmAutoresponder ? false : parsed.data.pendingNextReel;
   const matchAnyPost = isDmAutoresponder ? false : parsed.data.matchAnyPost;
+  const autoAddNewReels = isDmAutoresponder ? false : parsed.data.autoAddNewReels;
   // Neither a DM auto-responder nor a comment-to-comment campaign uses an
   // opening DM.
   const openingDmEnabled =
@@ -382,7 +386,8 @@ export async function POST(request: NextRequest) {
       ? true
       : parsed.data.publicReplyEnabled;
   // A post is only stored for the "specific post" trigger.
-  const isSpecificPost = !isDmAutoresponder && !pendingNextReel && !matchAnyPost;
+  const isSpecificPost =
+    !isDmAutoresponder && !pendingNextReel && !matchAnyPost && !autoAddNewReels;
   const publicReplyList = (
     parsed.data.publicReplyMessages.length > 0
       ? parsed.data.publicReplyMessages
@@ -418,6 +423,8 @@ export async function POST(request: NextRequest) {
       postUrl: isSpecificPost ? parsed.data.postUrl : null,
       pendingNextReel,
       matchAnyPost,
+      autoAddNewReels,
+      autoAddReelsSince: autoAddNewReels ? new Date() : null,
       keywords: matchAnyWord ? [] : parsed.data.keywords,
       matchAnyWord,
       dmMessage: primaryDmMessage,
@@ -528,6 +535,7 @@ export async function PATCH(request: NextRequest) {
     automationData.postUrl = null;
     automationData.matchAnyPost = false;
     automationData.pendingNextReel = false;
+    automationData.autoAddNewReels = false;
     automationData.openingDmEnabled = false;
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
@@ -558,7 +566,11 @@ export async function PATCH(request: NextRequest) {
     automationData.openingDmButtonLabel = null;
   }
   // Any-post / next-reel campaigns carry no specific post.
-  if (automationData.matchAnyPost === true || automationData.pendingNextReel === true) {
+  if (
+    automationData.matchAnyPost === true ||
+    automationData.pendingNextReel === true ||
+    automationData.autoAddNewReels === true
+  ) {
     automationData.postId = null;
     automationData.postUrl = null;
   }
@@ -586,7 +598,14 @@ export async function PATCH(request: NextRequest) {
 
   const updated = await prisma.automation.update({
     where: { id: automationId },
-    data: automationData,
+    data: {
+      ...automationData,
+      ...(automationData.autoAddNewReels === true && !existing.autoAddNewReels
+        ? { autoAddReelsSince: new Date() }
+        : automationData.autoAddNewReels === false
+          ? { autoAddReelsSince: null }
+          : {}),
+    },
   });
 
   // Update, create, or clear the campaign's primary tracked link when a

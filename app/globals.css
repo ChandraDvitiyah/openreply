@@ -1,33 +1,84 @@
+@import url("https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
-/* ManyChat Alternative — Design System
-   Plain and functional. No gradients, glass, glow, or animation. */
+/* Looped-inspired Kult system — warm, bold, rounded and creator-friendly. */
 
 @theme inline {
-  --color-background: #0b0b0d;
-  --color-foreground: #f4f4f5;
-  --color-surface: #161618;
-  --color-surface-hover: #1f1f22;
-  --color-border: #2e2e33;
-  --color-border-hover: #45454d;
-  --color-muted: #9b9ba3;
-  --color-accent: #6b8afd;
-  --color-accent-hover: #5372e8;
-  --color-success: #4ade80;
-  --color-error: #f87171;
-  --color-warning: #fbbf24;
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-background: #f5f4ee;
+  --color-foreground: #101211;
+  --color-surface: #ffffff;
+  --color-surface-hover: #ebe9e1;
+  --color-border: #d8d8d0;
+  --color-border-hover: #a9aaa2;
+  --color-muted: #666666;
+  --color-accent: #9ce069;
+  --color-accent-hover: #86cd51;
+  --color-success: #1e5653;
+  --color-error: #b42318;
+  --color-warning: #9a6700;
+  --font-sans: "Outfit", system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 }
 
-html {
-  color-scheme: dark;
-}
+html { color-scheme: light; scroll-behavior: smooth; }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+}
+
+.brand-mark {
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: #044340;
+  color: #9ce069;
+  font-weight: 800;
+  transform: rotate(-3deg);
+}
+
+.display-title {
+  font-family: "Bebas Neue", Impact, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.button-primary,
+.button-secondary {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+
+.button-primary { background: #9ce069; color: #101211; }
+.button-primary:hover { background: #86cd51; transform: translateY(-1px); }
+.button-secondary { border: 1px solid var(--color-border); background: #fff; color: #101211; }
+.button-secondary:hover { border-color: #1e5653; background: #f5f4ee; }
+
+.field-label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--color-foreground); }
+.field {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.75rem 0.875rem;
+  color: var(--color-foreground);
+  font-size: 0.875rem;
+}
+
+.dot-grid {
+  background-image: radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px);
+  background-size: 18px 18px;
 }
 
 /* Focus ring — visible, for keyboard users. */
@@ -48,6 +99,7 @@ select:focus-visible {
 .panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.015);
 }
 
 /* Kept as no-op aliases so existing markup degrades to plain surfaces
@@ -68,6 +120,138 @@ select:focus-visible {
 .stagger > * {
   animation: none;
 }
+
+/* Authenticated product UI. The public landing page intentionally keeps the
+   expressive Looped-inspired type system above. */
+.dashboard-ui {
+  --dashboard-ink: #292929;
+  --dashboard-secondary: #5d5d5d;
+  --dashboard-tertiary: #9e9e9e;
+  --dashboard-border: #e6e6e3;
+  --dashboard-brand: #9ce069;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.15px;
+  color: var(--dashboard-ink);
+}
+
+.dashboard-ui *,
+.dashboard-ui *::before,
+.dashboard-ui *::after {
+  letter-spacing: -0.15px;
+}
+
+.dashboard-ui h1,
+.dashboard-ui .display-title,
+.dashboard-ui .text-3xl,
+.dashboard-ui .text-4xl,
+.dashboard-ui .text-5xl,
+.dashboard-ui .text-6xl,
+.dashboard-ui .text-7xl,
+.dashboard-ui .text-8xl,
+.dashboard-ui .text-9xl {
+  font-family: inherit !important;
+  font-size: 24px !important;
+  font-weight: 500 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.15px !important;
+}
+
+.dashboard-ui h2,
+.dashboard-ui h3,
+.dashboard-ui .text-base,
+.dashboard-ui .text-lg,
+.dashboard-ui .text-xl,
+.dashboard-ui .text-2xl {
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+}
+
+.dashboard-ui .text-sm { font-size: 13px !important; }
+.dashboard-ui .text-xs,
+.dashboard-ui [class*="text-[9px]"],
+.dashboard-ui [class*="text-[10px]"],
+.dashboard-ui [class*="text-[11px]"] { font-size: 12px !important; }
+
+.dashboard-ui .font-semibold,
+.dashboard-ui .font-bold,
+.dashboard-ui .font-black { font-weight: 500 !important; }
+
+.dashboard-ui .text-foreground { color: var(--dashboard-ink) !important; }
+.dashboard-ui .text-accent { color: var(--dashboard-ink) !important; }
+.dashboard-ui .text-muted,
+.dashboard-ui .text-zinc-400 { color: var(--dashboard-secondary) !important; }
+.dashboard-ui .text-zinc-500,
+.dashboard-ui .text-zinc-600 { color: var(--dashboard-tertiary) !important; }
+.dashboard-ui [class*="text-[#1e5653]"] { color: var(--dashboard-ink) !important; }
+.dashboard-ui [class*="text-[#17120f]"] { color: var(--dashboard-ink) !important; }
+.dashboard-ui [class*="text-[#6d625b]"] { color: var(--dashboard-secondary) !important; }
+.dashboard-ui [class*="text-[#8e8179]"] { color: var(--dashboard-tertiary) !important; }
+.dashboard-ui [class*="bg-[#044340]"] { background-color: var(--dashboard-ink) !important; }
+
+.dashboard-ui .panel {
+  border-color: var(--dashboard-border);
+  border-radius: 16px !important;
+  background: #fff;
+  box-shadow: none;
+}
+
+.dashboard-ui [class*="rounded-[30px]"],
+.dashboard-ui [class*="rounded-[1.5rem]"] { border-radius: 16px !important; }
+
+.dashboard-ui div[class~="rounded"][class*="border"][class*="bg-surface"],
+.dashboard-ui div[class*="rounded-lg"][class*="border"][class*="bg-surface"],
+.dashboard-ui article[class*="border"][class*="bg-surface"] {
+  border-radius: 16px !important;
+}
+
+.dashboard-ui .dashboard-nav-item { border-radius: 8px !important; }
+
+.dashboard-ui .button-primary,
+.dashboard-ui .button-secondary,
+.dashboard-ui button[type="submit"],
+.dashboard-ui a[class*="button-"],
+.dashboard-ui button[class*="bg-accent"],
+.dashboard-ui a[class*="bg-accent"] {
+  min-height: 36px;
+  border-radius: 999px !important;
+  padding: 0.55rem 1rem;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dashboard-ui .button-primary {
+  background: var(--dashboard-brand);
+  color: var(--dashboard-ink);
+}
+
+.dashboard-ui button[class*="bg-accent"],
+.dashboard-ui a[class*="bg-accent"] {
+  background: var(--dashboard-brand) !important;
+  color: var(--dashboard-ink) !important;
+}
+
+.dashboard-ui .button-secondary {
+  border-color: var(--dashboard-border);
+  background: #fff;
+  color: var(--dashboard-ink);
+}
+
+.dashboard-ui input,
+.dashboard-ui textarea,
+.dashboard-ui select,
+.dashboard-ui .field {
+  border-color: var(--dashboard-border);
+  border-radius: 8px !important;
+  color: var(--dashboard-ink);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.dashboard-ui table { color: var(--dashboard-ink); }
+.dashboard-ui th { color: var(--dashboard-tertiary); font-size: 12px; font-weight: 500; }
+.dashboard-ui td { font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

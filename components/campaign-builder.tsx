@@ -24,7 +24,7 @@ import {
   type ImportRow,
 } from "@/lib/import-queue";
 
-type TriggerScope = "specific" | "any" | "next";
+type TriggerScope = "specific" | "any" | "next" | "futureReels";
 type MatchMode = "specific" | "any";
 type CampaignType = "COMMENT_TO_DM" | "DM_AUTORESPONDER" | "COMMENT_TO_COMMENT";
 
@@ -36,6 +36,7 @@ interface LoadedCampaign {
   postUrl: string | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
+  autoAddNewReels: boolean;
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
@@ -255,7 +256,13 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setCampaignType(c.type ?? "COMMENT_TO_DM");
         setSelectedAccountId(c.instagramAccountId);
         setTriggerScope(
-          c.matchAnyPost ? "any" : c.pendingNextReel ? "next" : "specific"
+          c.matchAnyPost
+            ? "any"
+            : c.autoAddNewReels
+              ? "futureReels"
+              : c.pendingNextReel
+                ? "next"
+                : "specific"
         );
         setPostId(c.postId);
         setPostUrl(c.postUrl);
@@ -437,6 +444,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       postUrl: !isDmAutoresponder && triggerScope === "specific" ? postUrl : null,
       matchAnyPost: !isDmAutoresponder && triggerScope === "any",
       pendingNextReel: !isDmAutoresponder && triggerScope === "next",
+      autoAddNewReels:
+        !isDmAutoresponder && triggerScope === "futureReels",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : finalKeywords,
       // A comment-to-comment campaign carries no DM, opening DM, or link.
@@ -753,7 +762,16 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             checked={triggerScope === "next"}
             onSelect={() => setTriggerScope("next")}
           >
-            next post or reel
+            only the next reel
+          </Radio>
+          <Radio
+            checked={triggerScope === "futureReels"}
+            onSelect={() => setTriggerScope("futureReels")}
+          >
+            <span className="block">every new reel from now on</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              New reels are attached automatically while this campaign is live
+            </span>
           </Radio>
         </Section>
         )}
@@ -819,7 +837,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             checked={matchMode === "any"}
             onSelect={() => setMatchMode("any")}
           >
-            {isDmAutoresponder ? "any message" : "any word"}
+            {isDmAutoresponder ? "any message" : "any comment"}
           </Radio>
           {!isDmAutoresponder && !isCommentToComment && (
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">

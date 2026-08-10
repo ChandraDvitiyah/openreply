@@ -21,6 +21,7 @@ interface Campaign {
   postUrl: string | null;
   pendingNextReel: boolean;
   matchAnyPost: boolean;
+  autoAddNewReels: boolean;
   keywords: string[];
   matchAnyWord: boolean;
   dmMessage: string;
@@ -145,6 +146,8 @@ export default function CampaignDetailPage() {
 
   const trigger = campaign.matchAnyPost
     ? "Any post or reel"
+    : campaign.autoAddNewReels
+      ? "Every new reel from activation"
     : campaign.pendingNextReel
       ? "Your next reel"
       : "A specific post or reel";
@@ -195,7 +198,9 @@ export default function CampaignDetailPage() {
               />
             ) : (
               <div className="grid h-14 w-14 place-items-center rounded bg-surface-hover text-[10px] text-muted">
-                {campaign.matchAnyPost || campaign.pendingNextReel ? "Any" : "Post"}
+                {campaign.matchAnyPost || campaign.pendingNextReel || campaign.autoAddNewReels
+                  ? "Any"
+                  : "Post"}
               </div>
             )}
             <span className="text-sm text-foreground">{trigger}</span>

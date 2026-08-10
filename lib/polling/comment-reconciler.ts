@@ -35,6 +35,8 @@ import {
 } from "@/lib/meta/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { syncAutoReelTargets } from "@/lib/polling/auto-reel-targets";
+import { asStringArray } from "@/lib/utils/string-list";
 
 // Only consider comments from the last few days — older ones are outside
 // Instagram's private-reply window anyway, so a DM to them would just fail.
@@ -62,6 +64,7 @@ function errMessage(error: unknown): string {
 
 /** One reconciliation pass across every active campaign. */
 export async function reconcileComments(): Promise<void> {
+  await syncAutoReelTargets();
   const automations = await prisma.automation.findMany({
     where: { isActive: true },
     select: {
@@ -69,10 +72,12 @@ export async function reconcileComments(): Promise<void> {
       name: true,
       postId: true,
       matchAnyPost: true,
+      autoAddNewReels: true,
       matchAnyWord: true,
       keywords: true,
       wholeWordMatch: true,
       publicReplyEnabled: true,
+      mediaTargets: { select: { mediaId: true } },
       workspaceId: true,
       instagramAccount: {
         select: {
@@ -89,10 +94,14 @@ export async function reconcileComments(): Promise<void> {
   const tokenCache = new Map<string, string | null>();
 
   for (const automation of automations) {
-    const stat = await sweepCampaign(automation, sinceMs, tokenCache).catch(
+    const normalizedAutomation = {
+      ...automation,
+      keywords: asStringArray(automation.keywords),
+    };
+    const stat = await sweepCampaign(normalizedAutomation, sinceMs, tokenCache).catch(
       (error): SweepStat => ({
         campaign: automation.name,
-        keywords: automation.keywords.join(","),
+        keywords: normalizedAutomation.keywords.join(","),
         matched: 0,
         alreadyReplied: 0,
         enqueued: 0,
@@ -109,10 +118,12 @@ async function sweepCampaign(
     name: string;
     postId: string | null;
     matchAnyPost: boolean;
+    autoAddNewReels: boolean;
     matchAnyWord: boolean;
     keywords: string[];
     wholeWordMatch: boolean;
     publicReplyEnabled: boolean;
+    mediaTargets: { mediaId: string }[];
     instagramAccount: {
       id: string;
       instagramId: string;
@@ -162,6 +173,8 @@ async function sweepCampaign(
     } catch (error) {
       stat.errors.push(`Media list: ${errMessage(error)}`);
     }
+  } else if (automation.autoAddNewReels) {
+    mediaIds.push(...automation.mediaTargets.map((target) => target.mediaId));
   }
   if (mediaIds.length === 0) return stat;
 

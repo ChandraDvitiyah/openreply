@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "CampaignType" ADD VALUE 'COMMENT_TO_COMMENT';

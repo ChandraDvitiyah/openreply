@@ -15,7 +15,7 @@ export function requireEnv(name: string): string {
 }
 
 export function getBaseUrl(): string {
-  return process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
 export function getEncryptionKeyHex(): string {
@@ -31,13 +31,14 @@ export function getMetaGraphApiVersion(): string {
 }
 
 export const serverEnvSchema = z.object({
-  NEXTAUTH_URL: z.string().url(),
-  NEXTAUTH_SECRET: z.string().min(16),
-  DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().min(1),
+  NEXT_PUBLIC_APP_URL: z.string().url(),
+  TURSO_DATABASE_URL: z.string().startsWith("libsql://"),
+  TURSO_AUTH_TOKEN: z.string().min(1),
+  UPSTASH_REDIS_URL: z.string().startsWith("rediss://"),
   ENCRYPTION_KEY: z.string().regex(HEX_32_BYTE),
   INSTAGRAM_APP_ID: z.string().min(1),
   INSTAGRAM_APP_SECRET: z.string().min(1),
+  FACEBOOK_APP_ID: z.string().min(1),
   FACEBOOK_APP_SECRET: z.string().min(1),
   WEBHOOK_VERIFY_TOKEN: z.string().min(1),
 });

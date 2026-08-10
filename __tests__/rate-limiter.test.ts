@@ -25,7 +25,10 @@ vi.mock("ioredis", () => {
   return { default: MockRedis };
 });
 
-vi.stubEnv("REDIS_URL", "redis://localhost:6379");
+vi.stubEnv(
+  "UPSTASH_REDIS_URL",
+  "rediss://default:test-password@test.upstash.io:6379"
+);
 
 import {
   checkRateLimit,

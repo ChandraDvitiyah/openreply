@@ -44,6 +44,19 @@ interface WorkspaceMembersData {
   }>;
 }
 
+interface FacebookPageData {
+  id: string;
+  pageId: string;
+  name: string;
+  webhookSubscribed: boolean;
+  connectedAt: string;
+}
+
+interface UserProfileData {
+  name: string;
+  email: string | null;
+}
+
 export default function SettingsPage() {
   const [data, setData] = useState<SettingsData | null>(null);
   const [membersData, setMembersData] = useState<WorkspaceMembersData | null>(
@@ -54,17 +67,35 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [facebookPages, setFacebookPages] = useState<FacebookPageData[]>([]);
+  const [profile, setProfile] = useState<UserProfileData | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/dashboard/stats").then((res) => res.json()),
       fetch("/api/workspace/members").then((res) => res.json()),
+      fetch("/api/user/profile").then((res) => res.json()),
     ])
-      .then(([statsPayload, membersPayload]) => {
+      .then(([statsPayload, membersPayload, profilePayload]) => {
         if (statsPayload.success) setData(statsPayload.data);
         if (membersPayload.success) setMembersData(membersPayload.data);
+        if (profilePayload.success) {
+          setProfile(profilePayload.data);
+          setDisplayName(profilePayload.data.name);
+        }
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/facebook/pages")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (payload.success) setFacebookPages(payload.data.pages);
+      })
+      .catch(() => setFacebookPages([]));
   }, []);
 
   async function refreshMembers() {
@@ -85,6 +116,20 @@ export default function SettingsPage() {
       body: JSON.stringify({ instagramAccountId }),
     });
     window.location.reload();
+  }
+
+  async function disconnectFacebook(facebookPageId: string) {
+    if (!confirm("Disconnect this Facebook Page? Its Messenger automations will be deleted.")) {
+      return;
+    }
+    setBusy(`facebook:${facebookPageId}`);
+    await fetch("/api/facebook/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ facebookPageId }),
+    });
+    setFacebookPages((current) => current.filter((page) => page.id !== facebookPageId));
+    setBusy(null);
   }
 
   async function inviteMember(event: React.FormEvent) {
@@ -117,6 +162,27 @@ export default function SettingsPage() {
     setBusy(null);
   }
 
+  async function saveProfile(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy("profile");
+    setProfileMessage(null);
+    const response = await fetch("/api/user/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: displayName }),
+    });
+    const payload = await response.json();
+    if (payload.success) {
+      setProfile(payload.data);
+      setDisplayName(payload.data.name);
+      setProfileMessage("Name updated");
+      await refreshMembers();
+    } else {
+      setProfileMessage(payload.error ?? "Could not update your name");
+    }
+    setBusy(null);
+  }
+
   if (loading) {
     return <div className="panel rounded p-8 h-64" />;
   }
@@ -128,6 +194,44 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
+      <section className="panel rounded p-6">
+        <h2 className="mb-1 text-base font-semibold">Your profile</h2>
+        <p className="mb-6 text-xs text-muted">
+          This name appears in your dashboard and team member list.
+        </p>
+        <form onSubmit={saveProfile} className="space-y-4">
+          <label className="block">
+            <span className="field-label">Name</span>
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              className="field mt-2"
+              maxLength={80}
+              autoComplete="name"
+              required
+            />
+          </label>
+          <div>
+            <p className="text-xs text-muted">Email</p>
+            <p className="mt-1 text-sm text-foreground">{profile?.email ?? "—"}</p>
+          </div>
+          <div className="flex items-center gap-3 border-t border-border pt-4">
+            <button
+              type="submit"
+              disabled={busy === "profile" || !displayName.trim()}
+              className="button-primary disabled:opacity-50"
+            >
+              {busy === "profile" ? "Saving…" : "Save name"}
+            </button>
+            {profileMessage && (
+              <p className={`text-xs ${profileMessage === "Name updated" ? "text-success" : "text-error"}`}>
+                {profileMessage}
+              </p>
+            )}
+          </div>
+        </form>
+      </section>
+
       <section className="panel rounded p-6">
         <h2 className="text-base font-semibold mb-6">Instagram Connection</h2>
 
@@ -207,6 +311,55 @@ export default function SettingsPage() {
           >
             {accounts.length > 0 ? "Connect another account" : "Connect Instagram"}
           </a>
+        </div>
+      </section>
+
+      <section className="panel rounded-[30px] p-6 lg:p-8">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+              Facebook channel
+            </p>
+            <h2 className="display-title mt-2 text-5xl">Messenger Connection</h2>
+            <p className="mt-3 max-w-xl text-sm text-muted">
+              Connect every Facebook Page you manage. Kult subscribes messages,
+              button postbacks, and Page-feed comments through Meta&apos;s official API.
+            </p>
+          </div>
+          <a href="/api/facebook/connect" className="button-primary shrink-0">
+            {facebookPages.length ? "Sync Facebook Pages" : "Connect Facebook"}
+          </a>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          {facebookPages.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-5 text-sm text-muted">
+              No Facebook Pages connected yet. Facebook access is separate from
+              Instagram Login even when both products live in the same Meta app.
+            </div>
+          ) : (
+            facebookPages.map((page) => (
+              <div
+                key={page.id}
+                className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-semibold text-foreground">{page.name}</p>
+                  <p className="mt-1 text-xs text-muted">
+                    Page ID {page.pageId} · {page.webhookSubscribed ? "Webhook ready" : "Webhook pending"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => disconnectFacebook(page.id)}
+                  disabled={busy === `facebook:${page.id}`}
+                  className="rounded-xl border border-error/20 px-4 py-2 text-sm font-semibold text-error hover:bg-error/10 disabled:opacity-50"
+                >
+                  {busy === `facebook:${page.id}` ? "Disconnecting…" : "Disconnect"}
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </section>
 
@@ -324,7 +477,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <span className="text-sm font-semibold text-foreground">
-            {data?.workspace.dmsSentThisPeriod ?? 0}
+            {data?.workspace?.dmsSentThisPeriod ?? 0}
           </span>
         </div>
       </section>

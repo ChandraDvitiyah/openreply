@@ -9,7 +9,7 @@ export function buildReportUrl(slug: string, baseUrl?: string) {
     baseUrl ??
     (typeof window !== "undefined"
       ? window.location.origin
-      : process.env.NEXTAUTH_URL ?? "http://localhost:3000");
+      : process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000");
 
   return `${resolvedBaseUrl.replace(/\/$/, "")}/reports/${slug}`;
 }

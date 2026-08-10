@@ -20,7 +20,7 @@ export default function DashboardShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="dashboard-ui flex h-screen overflow-hidden bg-[#f7f7f5]">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -35,7 +35,7 @@ export default function DashboardShell({
         />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="px-4 lg:px-8 py-6 max-w-7xl mx-auto">{children}</div>
+          <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-8 lg:py-8">{children}</div>
         </main>
       </div>
     </div>

@@ -8,6 +8,14 @@ import {
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
 import { INBOUND_DM_JOB_NAME, POSTBACK_JOB_NAME } from "@/lib/queue/client";
+import {
+  FACEBOOK_COMMENT_JOB_NAME,
+  FACEBOOK_MESSAGE_JOB_NAME,
+} from "@/lib/queue/client";
+import {
+  parseFacebookCommentEvents,
+  parseFacebookMessageEvents,
+} from "@/lib/meta/facebook-webhook";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -15,8 +23,9 @@ export async function GET(request: NextRequest) {
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
+  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
 
-  if (mode === "subscribe" && token === process.env.WEBHOOK_VERIFY_TOKEN) {
+  if (verifyToken && mode === "subscribe" && token === verifyToken) {
     return new NextResponse(challenge, { status: 200 });
   }
 
@@ -158,6 +167,42 @@ export async function POST(request: NextRequest) {
           )}`,
         }
       );
+    }
+
+    const facebookCommentEvents = parseFacebookCommentEvents(
+      payload as Parameters<typeof parseFacebookCommentEvents>[0]
+    );
+    for (const event of facebookCommentEvents) {
+      const page = await prisma.facebookPage.findUnique({
+        where: { pageId: event.pageId },
+        select: { workspaceId: true },
+      });
+      if (!page) continue;
+      await queue.add(FACEBOOK_COMMENT_JOB_NAME, event, {
+        jobId: `fbcomment_${event.pageId}_${event.commentId.replace(/:/g, "_")}`,
+      });
+      await prisma.webhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { workspaceId: page.workspaceId },
+      });
+    }
+
+    const facebookMessageEvents = parseFacebookMessageEvents(
+      payload as Parameters<typeof parseFacebookMessageEvents>[0]
+    );
+    for (const event of facebookMessageEvents) {
+      const page = await prisma.facebookPage.findUnique({
+        where: { pageId: event.pageId },
+        select: { workspaceId: true },
+      });
+      if (!page) continue;
+      await queue.add(FACEBOOK_MESSAGE_JOB_NAME, event, {
+        jobId: `fbmessage_${event.pageId}_${event.messageId.replace(/:/g, "_")}`,
+      });
+      await prisma.webhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { workspaceId: page.workspaceId },
+      });
     }
 
     await prisma.webhookEvent.update({

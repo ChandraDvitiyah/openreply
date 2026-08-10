@@ -43,5 +43,9 @@ next-env.d.ts
 
 /app/generated/prisma
 
+# Local SQLite database used by Link Studio (production uses Turso/libSQL)
+/data/*.db
+/data/*.db-*
+
 # Playwright MCP
 .playwright-mcp/

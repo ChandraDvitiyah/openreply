@@ -28,7 +28,7 @@ function base64UrlDecode(value: string): string {
 }
 
 function signState(payload: string): string {
-  return createHmac("sha256", requireEnv("NEXTAUTH_SECRET"))
+  return createHmac("sha256", getEncryptionKeyHex())
     .update(payload)
     .digest("base64url");
 }

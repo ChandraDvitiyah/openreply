@@ -18,7 +18,8 @@ export default function LegalShell({
       <header className="border-b border-white/10">
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5">
           <Link href="/" className="flex items-center gap-3">
-            <span className="text-lg font-bold text-white">OpenReply</span>
+            <span className="brand-mark">K</span>
+            <span className="text-lg font-bold text-white">Kult</span>
           </Link>
           <Link
             href="/login"
@@ -41,6 +42,18 @@ export default function LegalShell({
           {children}
         </div>
       </article>
+
+      <footer className="border-t border-white/10 py-8">
+        <nav
+          className="mx-auto flex max-w-3xl flex-wrap gap-x-6 gap-y-3 px-5 text-sm text-zinc-400"
+          aria-label="Legal pages"
+        >
+          <Link href="/privacy" className="transition hover:text-white">Privacy Policy</Link>
+          <Link href="/terms" className="transition hover:text-white">Terms &amp; Conditions</Link>
+          <Link href="/data-deletion" className="transition hover:text-white">Data Deletion</Link>
+          <Link href="/" className="transition hover:text-white">Back to Kult</Link>
+        </nav>
+      </footer>
     </main>
   );
 }

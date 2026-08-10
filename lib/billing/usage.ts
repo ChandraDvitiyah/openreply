@@ -3,9 +3,8 @@ import type { Prisma } from "@/app/generated/prisma/client";
 
 // Self-hosted build: usage is still counted per month so the dashboard can
 // report volume, but no cap is enforced. Meta's own rate limits apply instead.
-// Must stay within PostgreSQL int4 range, since dmsSentThisPeriod is an Int
-// column and this value is used in a `less-than` comparison against it. Two
-// billion DMs/month is effectively unlimited without overflowing the column.
+// Stay within Prisma's signed 32-bit Int range. Two billion DMs/month is
+// effectively unlimited without overflowing the mapped SQLite integer value.
 const MONTHLY_DM_LIMIT = 2_000_000_000;
 
 function getMonthStart(date = new Date()): Date {

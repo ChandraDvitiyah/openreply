@@ -1,4 +1,4 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@/app/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as {
@@ -6,13 +6,16 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = process.env.TURSO_DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL environment variable is required");
+    throw new Error("TURSO_DATABASE_URL environment variable is required");
   }
 
   return new PrismaClient({
-    adapter: new PrismaPg(databaseUrl),
+    adapter: new PrismaLibSql({
+      url: databaseUrl,
+      authToken: process.env.TURSO_AUTH_TOKEN || undefined,
+    }),
   });
 }
 

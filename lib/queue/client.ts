@@ -11,7 +11,17 @@ let connection: Redis | null = null;
 
 export function getRedisConnection(): Redis {
   if (!connection) {
-    connection = new Redis(process.env.REDIS_URL!, {
+    const url = process.env.UPSTASH_REDIS_URL;
+    if (!url) {
+      throw new Error("UPSTASH_REDIS_URL environment variable is required");
+    }
+    if (!url.startsWith("rediss://")) {
+      throw new Error(
+        "UPSTASH_REDIS_URL must be the TLS Redis URL beginning with rediss://, not the REST URL"
+      );
+    }
+    connection = new Redis(url, {
+      tls: {},
       maxRetriesPerRequest: null, // Required by BullMQ
     });
   }
@@ -53,13 +63,33 @@ export interface ProcessInboundDmJob {
   requeueAttempt?: number;
 }
 
+export interface ProcessFacebookMessageJob {
+  pageId: string;
+  senderId: string;
+  messageId: string;
+  messageText: string;
+}
+
+export interface ProcessFacebookCommentJob {
+  pageId: string;
+  senderId: string;
+  senderName?: string;
+  commentId: string;
+  commentText: string;
+  postId: string;
+}
+
 export type DmQueueJob =
   | ProcessCommentJob
   | ProcessPostbackJob
-  | ProcessInboundDmJob;
+  | ProcessInboundDmJob
+  | ProcessFacebookMessageJob
+  | ProcessFacebookCommentJob;
 
 export const POSTBACK_JOB_NAME = "process-postback";
 export const INBOUND_DM_JOB_NAME = "process-inbound-dm";
+export const FACEBOOK_MESSAGE_JOB_NAME = "process-facebook-message";
+export const FACEBOOK_COMMENT_JOB_NAME = "process-facebook-comment";
 
 let dmQueue: Queue<DmQueueJob> | null = null;
 

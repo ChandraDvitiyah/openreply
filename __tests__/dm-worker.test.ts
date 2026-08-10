@@ -98,6 +98,8 @@ vi.mock("@/lib/queue/client", () => ({
   getRedisConnection: vi.fn(),
   POSTBACK_JOB_NAME: "process-postback",
   INBOUND_DM_JOB_NAME: "process-inbound-dm",
+  FACEBOOK_MESSAGE_JOB_NAME: "process-facebook-message",
+  FACEBOOK_COMMENT_JOB_NAME: "process-facebook-comment",
 }));
 
 vi.mock("bullmq", () => {
@@ -235,7 +237,14 @@ describe("DM Worker — Full Pipeline", () => {
     expect(mockPrisma.automation.findMany).toHaveBeenCalledWith({
       where: {
         type: { in: ["COMMENT_TO_DM", "COMMENT_TO_COMMENT"] },
-        OR: [{ postId: "media_101" }, { matchAnyPost: true }],
+        OR: [
+          { postId: "media_101" },
+          { matchAnyPost: true },
+          {
+            autoAddNewReels: true,
+            mediaTargets: { some: { mediaId: "media_101" } },
+          },
+        ],
         isActive: true,
         instagramAccount: { instagramId: "ig_456" },
       },

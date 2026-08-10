@@ -7,7 +7,6 @@ import {
 } from "../lib/meta/oauth";
 
 beforeEach(() => {
-  vi.stubEnv("NEXTAUTH_SECRET", "test-secret-with-enough-length");
   vi.stubEnv(
     "ENCRYPTION_KEY",
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

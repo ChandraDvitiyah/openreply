@@ -29,9 +29,8 @@ The parts most worth scrutiny:
 
 Never commit any of these, and rotate one if it is exposed anywhere it could be logged:
 
-- `DATABASE_URL`, `REDIS_URL`
-- `NEXTAUTH_SECRET`, `CRON_SECRET`, `ENCRYPTION_KEY`
-- `RESEND_API_KEY`
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `UPSTASH_REDIS_URL`
+- `CLERK_SECRET_KEY`, `CRON_SECRET`, `ENCRYPTION_KEY`
 - `INSTAGRAM_APP_SECRET`, `FACEBOOK_APP_SECRET`
 - Live webhook payloads that contain user data
 

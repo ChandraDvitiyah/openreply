@@ -2,13 +2,21 @@ import { Worker, type Job } from "bullmq";
 import {
   getDMQueue,
   getRedisConnection,
+  FACEBOOK_COMMENT_JOB_NAME,
+  FACEBOOK_MESSAGE_JOB_NAME,
   INBOUND_DM_JOB_NAME,
   POSTBACK_JOB_NAME,
   type DmQueueJob,
   type ProcessCommentJob,
   type ProcessInboundDmJob,
   type ProcessPostbackJob,
+  type ProcessFacebookCommentJob,
+  type ProcessFacebookMessageJob,
 } from "./client";
+import {
+  processFacebookComment,
+  processFacebookMessage,
+} from "@/lib/queue/facebook-worker";
 import { prisma } from "@/lib/db/client";
 import {
   MetaApiError,
@@ -32,6 +40,7 @@ import {
   renderMessageWithTracking,
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
+import { asStringArray } from "@/lib/utils/string-list";
 
 const BACKOFF_DELAYS = [5 * 60 * 1000, 15 * 60 * 1000, 45 * 60 * 1000];
 
@@ -59,9 +68,11 @@ function formatError(error: unknown): string {
  */
 function pickDmMessage(automation: {
   dmMessage: string;
-  dmMessages?: string[] | null;
+  dmMessages?: unknown;
 }): string {
-  const pool = (automation.dmMessages ?? []).filter((m) => m.trim().length > 0);
+  const pool = asStringArray(automation.dmMessages).filter(
+    (message) => message.trim().length > 0
+  );
   if (pool.length === 0) return automation.dmMessage;
   return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -82,8 +93,16 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       // Both comment-triggered types run here; a comment-to-comment campaign
       // only posts the public reply (its DM leg is skipped below).
       type: { in: ["COMMENT_TO_DM", "COMMENT_TO_COMMENT"] },
-      // Match campaigns bound to this specific post, plus any-post campaigns.
-      OR: [{ postId: mediaId }, { matchAnyPost: true }],
+      // Match a specific post, any-post campaigns, or reels materialized by
+      // persistent "every future reel" targeting.
+      OR: [
+        { postId: mediaId },
+        { matchAnyPost: true },
+        {
+          autoAddNewReels: true,
+          mediaTargets: { some: { mediaId } },
+        },
+      ],
       isActive: true,
       instagramAccount: {
         instagramId: instagramAccountId,
@@ -109,7 +128,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       ? { matched: true, matchedKeyword: null }
       : matchKeywords(
           commentText,
-          automation.keywords,
+          asStringArray(automation.keywords),
           automation.wholeWordMatch
         );
 
@@ -241,9 +260,10 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // Public reply leg — decoupled from the DM and posted first so a DM failure
     // (e.g. a non-follower whose messaging is restricted) never suppresses it.
     // Idempotent across retries via publicReplySentAt.
+    const publicReplyMessages = asStringArray(automation.publicReplyMessages);
     const replyPool =
-      automation.publicReplyMessages.length > 0
-        ? automation.publicReplyMessages
+      publicReplyMessages.length > 0
+        ? publicReplyMessages
         : automation.publicReplyMessage
           ? [automation.publicReplyMessage]
           : [];
@@ -724,7 +744,7 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
       ? { matched: true, matchedKeyword: null }
       : matchKeywords(
           messageText,
-          automation.keywords,
+          asStringArray(automation.keywords),
           automation.wholeWordMatch
         );
 
@@ -947,6 +967,12 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
 }
 
 async function processJob(job: Job<DmQueueJob>): Promise<void> {
+  if (job.name === FACEBOOK_MESSAGE_JOB_NAME) {
+    return processFacebookMessage(job as Job<ProcessFacebookMessageJob>);
+  }
+  if (job.name === FACEBOOK_COMMENT_JOB_NAME) {
+    return processFacebookComment(job as Job<ProcessFacebookCommentJob>);
+  }
   if (job.name === POSTBACK_JOB_NAME) {
     return processPostback(job as Job<ProcessPostbackJob>);
   }
@@ -961,7 +987,12 @@ async function recordWorkerFailure(
   error: Error
 ) {
   try {
-    const instagramAccountId = job?.data.instagramAccountId;
+    const instagramAccountId =
+      job && "instagramAccountId" in job.data
+        ? job.data.instagramAccountId
+        : undefined;
+    const facebookPageId =
+      job && "pageId" in job.data ? job.data.pageId : undefined;
     const commentId =
       job && "commentId" in job.data ? job.data.commentId : null;
     const account = instagramAccountId
@@ -970,10 +1001,16 @@ async function recordWorkerFailure(
           select: { workspaceId: true },
         })
       : null;
+    const facebookPage = facebookPageId
+      ? await prisma.facebookPage.findUnique({
+          where: { pageId: facebookPageId },
+          select: { workspaceId: true },
+        })
+      : null;
 
     await prisma.operationalEvent.create({
       data: {
-        workspaceId: account?.workspaceId ?? null,
+        workspaceId: account?.workspaceId ?? facebookPage?.workspaceId ?? null,
         source: "WORKER",
         level: "ERROR",
         message: `DM worker job ${job?.id ?? "unknown"} failed: ${error.message}`,
@@ -981,6 +1018,7 @@ async function recordWorkerFailure(
           jobId: job?.id ?? null,
           attemptsMade: job?.attemptsMade ?? null,
           instagramAccountId: instagramAccountId ?? null,
+          facebookPageId: facebookPageId ?? null,
           commentId,
         },
       },
@@ -1048,4 +1086,3 @@ export function createDMWorker(): Worker<DmQueueJob> {
 
   return worker;
 }
-

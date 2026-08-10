@@ -41,7 +41,7 @@ export default function PublicSiteHeader({ active }: PublicSiteHeaderProps) {
             Sign in
           </Link>
           <Link
-            href="/login"
+            href="/signup"
             className="inline-flex items-center justify-center bg-cyan-300 px-4 py-2 text-sm font-bold text-zinc-950 transition hover:bg-cyan-200"
           >
             Start free
