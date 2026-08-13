@@ -5,7 +5,7 @@ written so that a future maintainer or coding agent can recover from a new
 computer, a lost SSH key, or a deleted worker VM with the Git repository and
 access to the service accounts. It intentionally contains no secret values.
 
-Last verified: **10 August 2026**.
+Last verified: **14 August 2026**.
 
 ## 1. Read this first
 
@@ -19,12 +19,12 @@ Browser / Meta webhooks
         |
         v
 Vercel: Next.js web app and API routes
-        |                     |
-        v                     v
-Turso: all relational data   Upstash Redis: BullMQ queue + worker heartbeat
-                                      ^
-                                      |
-                         Oracle VM: continuous BullMQ worker
+        |
+        v
+Turso: relational data + durable queue + rate limits + worker heartbeat
+        ^
+        |
+Oracle VM: continuous durable queue worker
 ```
 
 Important consequences:
@@ -34,8 +34,8 @@ Important consequences:
 - Oracle runs only `npm run worker`. Ports 80 and 443 are not needed there.
 - Turso is SQLite/libSQL and is the only relational database. There is no
   PostgreSQL service in this deployment.
-- Upstash is not application storage. It carries pending jobs, retry/rate-limit
-  state, and the worker heartbeat.
+- Turso also stores pending jobs, retry/rate-limit state, and worker heartbeat;
+  no Redis service is required.
 - The Oracle VM is replaceable. Durable user, campaign, analytics, account, and
   link data lives in Turso. The source of truth for code is GitHub.
 - A repository clone alone does not contain credentials. Recovery also requires
@@ -60,7 +60,6 @@ Important consequences:
 | Oracle login | `ubuntu` | App directory `/home/ubuntu/openreply` |
 | PM2 process | `kult-worker` | systemd service `pm2-ubuntu` restores it on boot |
 | Turso database | `kult-samudra` | URL host is visible in Turso; region is AWS Mumbai |
-| Upstash Redis | `quiet-sheepdog-103818` | Kult uses the TLS `rediss://` endpoint, not REST |
 | Clerk | Existing Development instance | Personal-use deployment; `/login` and `/signup` |
 | Meta Graph version | `v25.0` | Also represented by `META_GRAPH_API_VERSION` |
 | Meta/Facebook App ID | `1040409875479157` | Public identifier, not the app secret |
@@ -95,7 +94,7 @@ inventory record and will not exist on a new device.
 
 Vercel schedules the checked-in daily crons in `vercel.json`. The continuous
 worker separately reconciles comments every five minutes by default, writes a
-heartbeat every 30 seconds, and refreshes 30-day performance data every 12
+heartbeat every 60 seconds, and refreshes 30-day performance data every 12
 hours.
 
 ## 3. Where secrets live
@@ -104,7 +103,7 @@ Git contains only `.env.example`. Production values are stored in:
 
 1. **Vercel → `kultreply` → Settings → Environment Variables** for the web app.
 2. **Oracle → `/home/ubuntu/openreply/.env.local`** for the worker, mode `600`.
-3. The originating service dashboards: Clerk, Turso, Upstash, and Meta.
+3. The originating service dashboards: Clerk, Turso, and Meta.
 
 The Vercel and Oracle copies of shared variables must match. Do not assume a
 developer's local `.env.local` is current; on the original Mac it may still
@@ -123,7 +122,6 @@ contain an old ngrok URL.
 | `TURSO_DATABASE_URL` | Turso database | Web + worker | Must start `libsql://` |
 | `TURSO_AUTH_TOKEN` | Turso token | Web + worker | Read-write token |
 | `LOCAL_DATABASE_URL` | App setting | Build/migrations | `file:./data/kult-prisma.db` |
-| `UPSTASH_REDIS_URL` | Upstash Connect panel | Web + worker | Full TLS URL starting `rediss://` |
 | `FACEBOOK_APP_ID` | Meta App Settings | Web + worker | Public numeric ID |
 | `FACEBOOK_APP_SECRET` | Meta App Settings | Web + worker | Secret |
 | `META_CLIENT_TOKEN` | Meta App Settings | Reference | Not a substitute for an app secret |
@@ -135,9 +133,6 @@ contain an old ngrok URL.
 | `CRON_SECRET` | Owner-generated | Vercel cron routes | Long random value |
 | `PERFORMANCE_SYNC_INTERVAL_MS` | Optional app setting | Worker | Default `43200000` (12 hours) |
 | `COMMENT_POLL_INTERVAL_MS` | Optional app setting | Worker | Default `300000` (5 minutes) |
-
-`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are not used by this
-code. BullMQ uses an ordinary TLS Redis connection.
 
 ### The encryption-key invariant
 
@@ -155,7 +150,7 @@ account.
 
 The owner should keep these outside Git in a password manager:
 
-- GitHub, Vercel, Oracle, Turso, Upstash, Clerk, and Meta login identifiers.
+- GitHub, Vercel, Oracle, Turso, Clerk, and Meta login identifiers.
 - MFA recovery codes for every service.
 - A secure export or record of all production environment values.
 - The Oracle SSH private key, or a second independently stored administrator
@@ -232,8 +227,8 @@ npm run dev
 npm run worker
 ```
 
-Only run a local worker against production Turso/Redis when deliberately testing
-queue behavior. Multiple BullMQ workers can consume real jobs. For UI work,
+Only run a local worker against production Turso when deliberately testing
+queue behavior. Multiple workers can consume real jobs. For UI work,
 leave the local worker stopped.
 
 ### 4.4 Recover Oracle access on a new device when the old key is available
@@ -275,7 +270,6 @@ A healthy response has:
 
 - top-level `status: "ok"`;
 - database `status: "ok"`;
-- Redis detail `PONG`;
 - queue `status: "ok"`; and
 - worker `healthy: true` with a recent heartbeat from hostname `kult-worker`.
 
@@ -396,7 +390,7 @@ Weekly:
 
 - Open `/api/health` and confirm a fresh worker heartbeat.
 - Review Vercel Function logs and `pm2 logs kult-worker` for repeated errors.
-- Review Upstash command usage and failed BullMQ jobs.
+- Review Turso usage and failed durable queue jobs.
 - Confirm Oracle boot-volume, memory, and swap usage.
 - Check Meta webhook delivery errors and expired/revoked account connections.
 
@@ -667,8 +661,8 @@ worker has no public callback.
 
 ### Oracle instance is deleted
 
-Follow section 7. Turso retains application data and Upstash retains available
-queue state. Stop the old instance before enabling the replacement if it still
+Follow section 7. Turso retains application data and available queue state.
+Stop the old instance before enabling the replacement if it still
 exists.
 
 ### Turso data is damaged
@@ -684,13 +678,6 @@ restored one is validated.
 Create a new database, run `npm run db:migrate:turso`, and reconnect Clerk users
 and every Meta account. Campaigns, logs, analytics snapshots, bio links, and
 stored OAuth tokens cannot be reconstructed from Git.
-
-### Upstash Redis is lost or credentials are reset
-
-Create or recover the Redis database, copy its complete `rediss://` connection
-URL into Vercel and Oracle, redeploy/restart, and verify `PONG`. Pending queue
-jobs and rate-limit state may be lost; comment reconciliation can recover many
-eligible missed comments but should not be treated as a complete queue backup.
 
 ### Clerk instance or owner access is lost
 
@@ -711,7 +698,6 @@ Rotate only the exposed credential, update every consumer, then verify health:
 
 - Clerk secret: Vercel (and keep the worker environment consistent), redeploy.
 - Turso token: Vercel + Oracle, redeploy/restart.
-- Upstash password: Vercel + Oracle, redeploy/restart; inspect queued jobs.
 - Meta app secrets: Vercel + Oracle, redeploy/restart; retest OAuth/webhooks.
 - Webhook verify token: Vercel + Meta webhook configuration, then redeploy.
 - Cron secret: Vercel, then redeploy.
@@ -726,7 +712,7 @@ Rotate only the exposed credential, update every consumer, then verify health:
 | --- | --- | --- |
 | Site does not load | Vercel deployment and Function logs | Vercel/web app |
 | Health database error | Turso status, URL, token, migration state | Turso |
-| Health Redis/queue error | Upstash status and complete `rediss://` URL | Upstash |
+| Health queue error | Turso status, token, and migration state | Turso |
 | Worker unhealthy/stale | OCI state, PM2, swap/memory, worker logs | Oracle/PM2 |
 | Webhook verification fails | exact URL/token, current Vercel deployment | Meta + Vercel |
 | OAuth redirect error | exact registered callback and correct app ID | Meta |
@@ -748,7 +734,7 @@ npm run build
 npm run check:webhook
 ```
 
-Never run destructive Git, database, Redis, or OCI commands as a diagnostic.
+Never run destructive Git, database, or OCI commands as a diagnostic.
 Resolve the exact target and take a backup first.
 
 ## 10. Meta and Clerk production settings
@@ -808,7 +794,6 @@ After an authorized production change, the agent must:
 - [OCI: manage Cloud Agent plugins](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/manage-plugins.htm)
 - [Turso database dump and restore](https://docs.turso.tech/cli/db/shell)
 - [Turso point-in-time recovery](https://docs.turso.tech/features/point-in-time-recovery)
-- [Upstash Redis CLI and backups](https://upstash.com/docs/agent-resources/cli)
 - [Clerk MFA strategies](https://clerk.com/docs/guides/configure/auth-strategies/sign-up-sign-in-options)
 
 The official service documentation wins if a dashboard label or procedure has

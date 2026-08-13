@@ -452,6 +452,56 @@ model OperationalEvent {
   @@index([createdAt])
 }
 
+// Durable, database-backed delivery queue. Webhook handlers insert jobs here
+// and the Oracle worker claims them with a short lease. Turso is already the
+// application's durable system of record, so queue delivery no longer depends
+// on a continuously metered Redis service.
+model DurableJob {
+  id             String         @id @default(cuid())
+  name           String
+  payload        Json
+  dedupeKey      String?        @unique
+  status         QueueJobStatus @default(WAITING)
+  attemptsMade   Int            @default(0)
+  maxAttempts    Int            @default(3)
+  availableAt    DateTime       @default(now())
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([status, availableAt])
+  @@index([status, leaseExpiresAt])
+  @@index([completedAt])
+}
+
+// One atomic counter per Instagram account and UTC hour. Old buckets are tiny
+// and can be cleaned opportunistically; they do not require TTL infrastructure.
+model DmRateLimitBucket {
+  instagramAccountId String
+  windowStart        DateTime
+  count              Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@id([instagramAccountId, windowStart])
+  @@index([windowStart])
+}
+
+// Single-row worker liveness state. Updating once per minute costs only about
+// 43k Turso row writes per month, far below the free-tier allowance.
+model WorkerState {
+  key       String   @id
+  status    String
+  pid       Int
+  hostname  String?
+  startedAt DateTime?
+  checkedAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
 enum CampaignType {
   COMMENT_TO_DM
   DM_AUTORESPONDER
@@ -499,6 +549,13 @@ enum DmStatus {
 enum WebhookStatus {
   PENDING
   PROCESSED
+  FAILED
+}
+
+enum QueueJobStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
   FAILED
 }
 

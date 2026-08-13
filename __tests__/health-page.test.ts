@@ -9,7 +9,6 @@ const healthyPayload: HealthPageData = {
   status: "ok",
   checks: {
     database: { status: "ok" },
-    redis: { status: "ok", detail: "PONG" },
     queue: {
       status: "ok",
       counts: { waiting: 1, active: 2, delayed: 3, failed: 0 },
@@ -65,13 +64,12 @@ describe("health status page", () => {
     expect(html).toContain("All systems operational");
     expect(html).toContain("Live component checks");
     expect(html).toContain("Database");
-    expect(html).toContain("Redis");
     expect(html).toContain("Message queue");
     expect(html).toContain("Automation worker");
     expect(html).toContain("Heartbeat 6s ago");
     expect(html).toContain("<dd>3</dd>");
     expect(html).toContain("/api/health?format=json");
-    expect(html.match(/role="meter"/g)).toHaveLength(4);
+    expect(html.match(/role="meter"/g)).toHaveLength(3);
   });
 
   it("renders a clear degraded state without exposing raw service errors", () => {

@@ -11,3 +11,8 @@ Use the canonical local setup guide: [KULT_SETUP.md](KULT_SETUP.md).
 Kult now uses one Turso/libSQL database for all relational application data,
 Upstash Redis over TLS for BullMQ, and Clerk for authentication. Nothing is
 deployed automatically.
+# Setup guide status
+
+> The current deployment no longer uses Upstash or BullMQ. Follow
+> `OPERATIONS.md` for the Turso-backed durable queue architecture. Older Redis
+> references below are retained only as historical context.

@@ -30,7 +30,7 @@ const features = [
   "Every future reel targeting",
   "Opening-DM button sequences",
   "Turso-hosted application data",
-  "Upstash-backed delivery queue",
+  "Durable Turso delivery queue",
   "Encrypted Meta access tokens",
   "Multi-account creator workspace",
   "Link-in-bio studio and analytics",
@@ -158,8 +158,8 @@ export default function HomePage() {
                 THE CREATOR OS YOU CONTROL.
               </h2>
               <p className="mt-8 max-w-lg text-lg leading-8">
-                Clerk protects the workspace. Turso holds relational data. Upstash
-                runs the queue. Kult brings the pieces together in one focused interface.
+                Clerk protects the workspace. Turso holds relational data and the
+                durable queue. Kult brings the pieces together in one focused interface.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

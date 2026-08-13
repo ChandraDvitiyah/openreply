@@ -1,7 +1,6 @@
-import { Worker, type Job } from "bullmq";
 import {
+  DurableWorker,
   getDMQueue,
-  getRedisConnection,
   FACEBOOK_COMMENT_JOB_NAME,
   FACEBOOK_MESSAGE_JOB_NAME,
   INBOUND_DM_JOB_NAME,
@@ -12,6 +11,7 @@ import {
   type ProcessPostbackJob,
   type ProcessFacebookCommentJob,
   type ProcessFacebookMessageJob,
+  type QueueJob,
 } from "./client";
 import {
   processFacebookComment,
@@ -66,11 +66,11 @@ function formatError(error: unknown): string {
 // Meta occasionally returns a temporary platform error while rendering an
 // otherwise-valid button template. Retrying preserves the intended CTA; an
 // immediate inline-link fallback makes a transient outage permanently degrade
-// the user's message. On the final BullMQ attempt we still fall back so the
+// the user's message. On the final durable-queue attempt we still fall back so the
 // recipient gets the promised link instead of nothing.
 const TRANSIENT_META_ERROR_CODES = new Set([1, 2, 4, 17, 368]);
 
-function shouldRetryButtonTemplate(error: unknown, job: Job): boolean {
+function shouldRetryButtonTemplate(error: unknown, job: QueueJob): boolean {
   if (
     !(error instanceof MetaApiError) ||
     !TRANSIENT_META_ERROR_CODES.has(error.code)
@@ -111,7 +111,7 @@ function pickDmMessage(automation: {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
+async function processComment(job: QueueJob<ProcessCommentJob>): Promise<void> {
   const {
     instagramAccountId,
     commentId,
@@ -348,7 +348,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           })
           .catch(() => {});
         // A comment-to-comment campaign has no DM leg to fall back on, so a
-        // failed public reply is a failed delivery — rethrow to let BullMQ
+        // failed public reply is a failed delivery — rethrow to let the queue
         // retry with backoff. For comment-to-DM the reply is best-effort and
         // must not block the DM, so we swallow it as before.
         if (isCommentOnly) throw error;
@@ -582,7 +582,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
  * The postback payload is `reveal:<automationId>`; the sender is the user's
  * IGSID (same id as their comment author id), which we DM directly.
  */
-async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
+async function processPostback(job: QueueJob<ProcessPostbackJob>): Promise<void> {
   const { instagramAccountId, userId, payload } = job.data;
 
   if (!payload.startsWith("reveal:")) return;
@@ -760,7 +760,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
  * handling, but keyed on the message id instead of a comment id, and without the
  * public-reply or opening-DM legs (there is no post comment to reply to).
  */
-async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
+async function processInboundDm(job: QueueJob<ProcessInboundDmJob>): Promise<void> {
   const { instagramAccountId, senderId, messageId, messageText } = job.data;
   const requeueAttempt = job.data.requeueAttempt ?? 0;
 
@@ -1025,24 +1025,24 @@ async function processInboundDm(job: Job<ProcessInboundDmJob>): Promise<void> {
   }
 }
 
-async function processJob(job: Job<DmQueueJob>): Promise<void> {
+async function processJob(job: QueueJob<DmQueueJob>): Promise<void> {
   if (job.name === FACEBOOK_MESSAGE_JOB_NAME) {
-    return processFacebookMessage(job as Job<ProcessFacebookMessageJob>);
+    return processFacebookMessage(job as QueueJob<ProcessFacebookMessageJob>);
   }
   if (job.name === FACEBOOK_COMMENT_JOB_NAME) {
-    return processFacebookComment(job as Job<ProcessFacebookCommentJob>);
+    return processFacebookComment(job as QueueJob<ProcessFacebookCommentJob>);
   }
   if (job.name === POSTBACK_JOB_NAME) {
-    return processPostback(job as Job<ProcessPostbackJob>);
+    return processPostback(job as QueueJob<ProcessPostbackJob>);
   }
   if (job.name === INBOUND_DM_JOB_NAME) {
-    return processInboundDm(job as Job<ProcessInboundDmJob>);
+    return processInboundDm(job as QueueJob<ProcessInboundDmJob>);
   }
-  return processComment(job as Job<ProcessCommentJob>);
+  return processComment(job as QueueJob<ProcessCommentJob>);
 }
 
 async function recordWorkerFailure(
-  job: Job<DmQueueJob> | undefined,
+  job: QueueJob<DmQueueJob> | undefined,
   error: Error
 ) {
   try {
@@ -1054,40 +1054,12 @@ async function recordWorkerFailure(
       job && "pageId" in job.data ? job.data.pageId : undefined;
     const commentId =
       job && "commentId" in job.data ? job.data.commentId : null;
-    const account = instagramAccountId
-      ? await prisma.instagramAccount.findUnique({
-          where: { instagramId: instagramAccountId },
-          select: { workspaceId: true },
-        })
-      : null;
-    const facebookPage = facebookPageId
-      ? await prisma.facebookPage.findUnique({
-          where: { pageId: facebookPageId },
-          select: { workspaceId: true },
-        })
-      : null;
-
-    await prisma.operationalEvent.create({
-      data: {
-        workspaceId: account?.workspaceId ?? facebookPage?.workspaceId ?? null,
-        source: "WORKER",
-        level: "ERROR",
-        message: `DM worker job ${job?.id ?? "unknown"} failed: ${error.message}`,
-        payload: {
-          jobId: job?.id ?? null,
-          attemptsMade: job?.attemptsMade ?? null,
-          instagramAccountId: instagramAccountId ?? null,
-          facebookPageId: facebookPageId ?? null,
-          commentId,
-        },
-      },
-    });
-
     await recordWorkerAlert({
       level: "error",
-      message: error.message,
+      message: `DM worker job ${job?.id ?? "unknown"} failed: ${error.message}`,
       jobId: job?.id,
       instagramAccountId,
+      facebookPageId,
       commentId: commentId ?? undefined,
     });
   } catch (recordError) {
@@ -1098,25 +1070,20 @@ async function recordWorkerFailure(
   }
 }
 
-export function createDMWorker(): Worker<DmQueueJob> {
-  const worker = new Worker<DmQueueJob>(
-    "dm-processing",
-    processJob,
-    {
-      connection: getRedisConnection(),
-      concurrency: 5,
-      settings: {
-        backoffStrategy: (attemptsMade: number) =>
-          BACKOFF_DELAYS[Math.min(attemptsMade - 1, BACKOFF_DELAYS.length - 1)],
-      },
-    }
-  );
+export function createDMWorker(): DurableWorker {
+  const worker = new DurableWorker(processJob, {
+    concurrency: 5,
+    settings: {
+      backoffStrategy: (attemptsMade: number) =>
+        BACKOFF_DELAYS[Math.min(attemptsMade - 1, BACKOFF_DELAYS.length - 1)],
+    },
+  });
 
-  worker.on("completed", (job) => {
+  worker.on("completed", (job: QueueJob<DmQueueJob>) => {
     console.log(`[DM Worker] Job ${job.id} completed`);
   });
 
-  worker.on("failed", (job, err) => {
+  worker.on("failed", (job: QueueJob<DmQueueJob>, err: Error) => {
     console.error(
       `[DM Worker] Job ${job?.id} failed (attempt ${job?.attemptsMade}):`,
       err.message
@@ -1124,17 +1091,12 @@ export function createDMWorker(): Worker<DmQueueJob> {
     void recordWorkerFailure(job, err);
   });
 
-  worker.on("error", (err) => {
+  worker.on("error", (err: Error) => {
     console.error("[DM Worker] Worker error:", err.message);
-    void prisma.operationalEvent
-      .create({
-        data: {
-          source: "WORKER",
-          level: "ERROR",
-          message: `DM worker process error: ${err.message}`,
-          payload: { name: err.name },
-        },
-      })
+    void recordWorkerAlert({
+      level: "error",
+      message: `DM worker process error: ${err.message}`,
+    })
       .catch((recordError) => {
         console.error(
           "[DM Worker] Failed to record worker process error:",

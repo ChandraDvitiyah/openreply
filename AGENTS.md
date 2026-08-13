@@ -13,9 +13,9 @@ inventory, secret-handling rules, update procedure, and recovery runbooks.
 - Work from this nested `openreply` repository, not its parent directory.
 - Never commit `.env.local`, private keys, access tokens, database dumps, or
   screenshots that contain credentials.
-- The production web app runs on Vercel; only the BullMQ worker runs on Oracle.
+- The production web app runs on Vercel; only the durable queue worker runs on Oracle.
   Do not start a second web server on Oracle or replace Turso with PostgreSQL.
-- Turso is the only relational database. Upstash Redis is queue/heartbeat state.
+- Turso is the durable store for application data, queued jobs, rate limits, and worker health.
 - Treat `ENCRYPTION_KEY` as data-critical: changing it makes existing encrypted
   Meta access tokens unreadable unless they are migrated or accounts reconnect.
 - Inspect `git status`, verify `/api/health`, and take a Turso dump before a

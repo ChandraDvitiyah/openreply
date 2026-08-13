@@ -51,7 +51,7 @@ export default function PrivacyPage() {
         <h2 className="text-xl font-bold text-white">Subprocessors</h2>
         <p className="mt-3">
           The service uses Clerk for authentication, Meta for Instagram access,
-          Turso/libSQL for application data, Upstash Redis for queued work, and
+          Turso/libSQL for application data and durable queued work, and
           may use a hosting and monitoring provider to operate automations.
           Each provider processes data only as needed to provide its service.
         </p>

@@ -1,139 +1,94 @@
-/**
- * Rate Limiter — Unit Tests
- *
- * Tests the hourly private-reply cap enforcement using mocked Redis.
- * Assertions derive from RATE_LIMIT_MAX so they survive a change to the cap.
- */
+/** Database-backed hourly DM rate limiter tests. */
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-const { mockGet, mockEval, mockDel } = vi.hoisted(() => ({
-  mockGet: vi.fn(),
-  mockEval: vi.fn(),
-  mockDel: vi.fn(),
+const { mockFindUnique, mockDeleteMany, mockQueryRawUnsafe } = vi.hoisted(() => ({
+  mockFindUnique: vi.fn(),
+  mockDeleteMany: vi.fn(),
+  mockQueryRawUnsafe: vi.fn(),
 }));
 
-vi.mock("ioredis", () => {
-  const MockRedis = vi.fn().mockImplementation(function (
-    this: Record<string, unknown>
-  ) {
-    this.get = mockGet;
-    this.eval = mockEval;
-    this.del = mockDel;
-    return this;
-  });
-  return { default: MockRedis };
-});
-
-vi.stubEnv(
-  "UPSTASH_REDIS_URL",
-  "rediss://default:test-password@test.upstash.io:6379"
-);
+vi.mock("@/lib/db/client", () => ({
+  prisma: {
+    dmRateLimitBucket: {
+      findUnique: mockFindUnique,
+      deleteMany: mockDeleteMany,
+    },
+    $queryRawUnsafe: mockQueryRawUnsafe,
+  },
+}));
 
 import {
+  RATE_LIMIT_MAX,
   checkRateLimit,
   incrementDMCounter,
   reserveDMSlot,
-  RATE_LIMIT_MAX,
+  resetRateLimit,
 } from "../lib/utils/rate-limiter";
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
+beforeEach(() => vi.clearAllMocks());
 
 describe("checkRateLimit", () => {
-  it("should allow when count is below limit", async () => {
-    mockGet.mockResolvedValue("50");
-
+  it("allows when count is below the cap", async () => {
+    mockFindUnique.mockResolvedValue({ count: 50 });
     const result = await checkRateLimit("account_123");
-
-    expect(result.allowed).toBe(true);
-    expect(result.currentCount).toBe(50);
-    expect(result.remainingDMs).toBe(RATE_LIMIT_MAX - 50);
-    expect(result.shouldRequeue).toBe(false);
-    expect(result.shouldSkip).toBe(false);
-    expect(result.reserved).toBe(false);
+    expect(result).toMatchObject({
+      allowed: true,
+      currentCount: 50,
+      remainingDMs: RATE_LIMIT_MAX - 50,
+      reserved: false,
+    });
   });
 
-  it("should allow when no previous count exists", async () => {
-    mockGet.mockResolvedValue(null);
-
-    const result = await checkRateLimit("account_123");
-
-    expect(result.allowed).toBe(true);
-    expect(result.currentCount).toBe(0);
-    expect(result.remainingDMs).toBe(RATE_LIMIT_MAX);
-  });
-
-  it("should deny when count reaches the limit", async () => {
-    mockGet.mockResolvedValue(String(RATE_LIMIT_MAX));
-
-    const result = await checkRateLimit("account_123");
-
-    expect(result.allowed).toBe(false);
-    expect(result.shouldRequeue).toBe(true);
-    expect(result.shouldSkip).toBe(false);
-  });
-
-  it("should skip after max requeue attempts", async () => {
-    mockGet.mockResolvedValue(String(RATE_LIMIT_MAX));
-
-    const result = await checkRateLimit("account_123", 3);
-
-    expect(result.allowed).toBe(false);
-    expect(result.shouldRequeue).toBe(false);
-    expect(result.shouldSkip).toBe(true);
+  it("denies at the cap and eventually skips", async () => {
+    mockFindUnique.mockResolvedValue({ count: RATE_LIMIT_MAX });
+    await expect(checkRateLimit("account_123")).resolves.toMatchObject({
+      allowed: false,
+      shouldRequeue: true,
+      shouldSkip: false,
+    });
+    await expect(checkRateLimit("account_123", 3)).resolves.toMatchObject({
+      allowed: false,
+      shouldRequeue: false,
+      shouldSkip: true,
+    });
   });
 });
 
 describe("reserveDMSlot", () => {
-  it("should atomically reserve a slot when below the hourly cap", async () => {
-    mockEval.mockResolvedValue([1, 51, 139]);
-
+  it("atomically reserves a row below the cap", async () => {
+    mockQueryRawUnsafe.mockResolvedValue([{ count: 51 }]);
     const result = await reserveDMSlot("account_123");
-
-    expect(mockEval).toHaveBeenCalledWith(
-      expect.any(String),
-      1,
-      "rate:dm:account_123",
-      RATE_LIMIT_MAX,
-      3600
+    expect(mockQueryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining("ON CONFLICT"),
+      "account_123",
+      expect.any(Date),
+      expect.any(Date),
+      RATE_LIMIT_MAX
     );
-    expect(result.allowed).toBe(true);
-    expect(result.reserved).toBe(true);
-    expect(result.currentCount).toBe(51);
-    expect(result.remainingDMs).toBe(139);
+    expect(result).toMatchObject({
+      allowed: true,
+      reserved: true,
+      currentCount: 51,
+      remainingDMs: RATE_LIMIT_MAX - 51,
+    });
   });
 
-  it("should recommend requeue when the atomic reserve is denied", async () => {
-    mockEval.mockResolvedValue([0, RATE_LIMIT_MAX, 0]);
-
-    const result = await reserveDMSlot("account_123", 0);
-
-    expect(result.allowed).toBe(false);
-    expect(result.reserved).toBe(false);
-    expect(result.shouldRequeue).toBe(true);
-    expect(result.shouldSkip).toBe(false);
+  it("requeues when the conditional update cannot reserve", async () => {
+    mockQueryRawUnsafe.mockResolvedValue([]);
+    mockFindUnique.mockResolvedValue({ count: RATE_LIMIT_MAX });
+    await expect(reserveDMSlot("account_123")).resolves.toMatchObject({
+      allowed: false,
+      reserved: false,
+      shouldRequeue: true,
+    });
   });
 
-  it("should skip after max requeue attempts", async () => {
-    mockEval.mockResolvedValue(["0", String(RATE_LIMIT_MAX), "0"]);
-
-    const result = await reserveDMSlot("account_123", 3);
-
-    expect(result.allowed).toBe(false);
-    expect(result.shouldRequeue).toBe(false);
-    expect(result.shouldSkip).toBe(true);
-  });
-});
-
-describe("incrementDMCounter", () => {
-  it("should use the atomic reservation path", async () => {
-    mockEval.mockResolvedValue([1, 51, 139]);
-
-    const count = await incrementDMCounter("account_123");
-
-    expect(mockEval).toHaveBeenCalled();
-    expect(count).toBe(51);
+  it("supports the compatibility increment and reset helpers", async () => {
+    mockQueryRawUnsafe.mockResolvedValue([{ count: BigInt(12) }]);
+    await expect(incrementDMCounter("account_123")).resolves.toBe(12);
+    await resetRateLimit("account_123");
+    expect(mockDeleteMany).toHaveBeenCalledWith({
+      where: { instagramAccountId: "account_123" },
+    });
   });
 });

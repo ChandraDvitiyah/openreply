@@ -23,7 +23,6 @@ export interface HealthPageData {
   status: "ok" | "degraded";
   checks: {
     database: ServiceCheck;
-    redis: ServiceCheck;
     queue: QueueCheck;
     worker: WorkerCheck;
   };
@@ -38,7 +37,6 @@ interface QueueCounts {
 
 const ICONS = {
   database: `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>`,
-  redis: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4"/><path d="m4 17 8 4 8-4"/></svg>`,
   queue: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="5" rx="2"/><rect x="4" y="15" width="16" height="5" rx="2"/><path d="M8 9v6M16 9v6"/></svg>`,
   worker: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9h6v6H9zM12 4V2M12 22v-2M4 12H2M22 12h-2"/></svg>`,
 } as const;
@@ -148,15 +146,6 @@ export function renderHealthPage(data: HealthPageData): string {
         data.checks.database.status === "ok"
           ? "Turso is accepting queries"
           : "The database check did not complete",
-    }),
-    serviceCard({
-      icon: "redis",
-      label: "Redis",
-      healthy: data.checks.redis.status === "ok",
-      detail:
-        data.checks.redis.status === "ok"
-          ? "Upstash responded successfully"
-          : "The Redis check did not complete",
     }),
     serviceCard({
       icon: "queue",

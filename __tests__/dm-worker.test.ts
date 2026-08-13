@@ -95,25 +95,18 @@ vi.mock("@/lib/queue/client", () => ({
   getDMQueue: () => ({
     add: mockQueueAdd,
   }),
-  getRedisConnection: vi.fn(),
+  DurableWorker: class MockDurableWorker {
+    constructor(processor: unknown) {
+      (global as Record<string, unknown>).__dmWorkerProcessor = processor;
+    }
+    on = vi.fn();
+    close = vi.fn();
+  },
   POSTBACK_JOB_NAME: "process-postback",
   INBOUND_DM_JOB_NAME: "process-inbound-dm",
   FACEBOOK_MESSAGE_JOB_NAME: "process-facebook-message",
   FACEBOOK_COMMENT_JOB_NAME: "process-facebook-comment",
 }));
-
-vi.mock("bullmq", () => {
-  function MockWorker(_name: string, processor: unknown) {
-    (global as Record<string, unknown>).__dmWorkerProcessor = processor;
-    return {
-      on: vi.fn(),
-      close: vi.fn(),
-    };
-  }
-  return {
-    Worker: MockWorker,
-  };
-});
 
 import { createDMWorker } from "../lib/queue/dm-worker";
 import { MetaApiError } from "../lib/meta/client";

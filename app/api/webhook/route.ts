@@ -1,21 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { getDMQueue } from "@/lib/queue/client";
 import {
-  parseCommentEvents,
-  parseMessageEvents,
-  parsePostbackEvents,
   verifyWebhookSignature,
 } from "@/lib/meta/webhook";
-import { INBOUND_DM_JOB_NAME, POSTBACK_JOB_NAME } from "@/lib/queue/client";
-import {
-  FACEBOOK_COMMENT_JOB_NAME,
-  FACEBOOK_MESSAGE_JOB_NAME,
-} from "@/lib/queue/client";
-import {
-  parseFacebookCommentEvents,
-  parseFacebookMessageEvents,
-} from "@/lib/meta/facebook-webhook";
+import { enqueueWebhookPayload } from "@/lib/queue/webhook-enqueue";
 import { Prisma } from "@/app/generated/prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -85,129 +73,12 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const commentEvents = parseCommentEvents(
-      payload as Parameters<typeof parseCommentEvents>[0]
-    );
-    const queue = getDMQueue();
-
-    for (const event of commentEvents) {
-      const account = await prisma.instagramAccount.findUnique({
-        where: { instagramId: event.instagramAccountId },
-        select: { workspaceId: true },
-      });
-
-      await queue.add(
-        "process-comment",
-        {
-          instagramAccountId: event.instagramAccountId,
-          commentId: event.commentId,
-          commentText: event.commentText,
-          commenterId: event.commenterId,
-          commenterName: event.commenterName,
-          mediaId: event.mediaId,
-          source: "WEBHOOK",
-        },
-        {
-          jobId: `comment_${event.instagramAccountId}_${event.commentId}`,
-        }
-      );
-
-      if (account) {
-        await prisma.webhookEvent.update({
-          where: { id: webhookEvent.id },
-          data: { workspaceId: account.workspaceId },
-        });
-      }
-    }
-
-    // Button taps from opening DMs → deliver the reveal message.
-    const postbackEvents = parsePostbackEvents(
-      payload as Parameters<typeof parsePostbackEvents>[0]
-    );
-
-    for (const event of postbackEvents) {
-      await queue.add(
-        POSTBACK_JOB_NAME,
-        {
-          instagramAccountId: event.instagramAccountId,
-          userId: event.userId,
-          payload: event.payload,
-          mid: event.mid,
-        },
-        {
-          // BullMQ forbids ":" in custom job ids, and the payload is
-          // "reveal:<id>", so build with underscores and strip any colons.
-          jobId: `postback_${event.instagramAccountId}_${event.userId}_${(
-            event.mid ?? event.payload
-          ).replace(/:/g, "_")}`,
-        }
-      );
-    }
-
-    // Inbound DMs → trigger DM auto-responder campaigns.
-    const messageEvents = parseMessageEvents(
-      payload as Parameters<typeof parseMessageEvents>[0]
-    );
-
-    for (const event of messageEvents) {
-      await queue.add(
-        INBOUND_DM_JOB_NAME,
-        {
-          instagramAccountId: event.instagramAccountId,
-          senderId: event.senderId,
-          messageId: event.messageId,
-          messageText: event.messageText,
-        },
-        {
-          // Deduplicate per inbound message so a redelivered webhook can't send
-          // the auto-reply twice. BullMQ forbids ":" in custom job ids.
-          jobId: `inbounddm_${event.instagramAccountId}_${event.messageId.replace(
-            /:/g,
-            "_"
-          )}`,
-        }
-      );
-    }
-
-    const facebookCommentEvents = parseFacebookCommentEvents(
-      payload as Parameters<typeof parseFacebookCommentEvents>[0]
-    );
-    for (const event of facebookCommentEvents) {
-      const page = await prisma.facebookPage.findUnique({
-        where: { pageId: event.pageId },
-        select: { workspaceId: true },
-      });
-      if (!page) continue;
-      await queue.add(FACEBOOK_COMMENT_JOB_NAME, event, {
-        jobId: `fbcomment_${event.pageId}_${event.commentId.replace(/:/g, "_")}`,
-      });
-      await prisma.webhookEvent.update({
-        where: { id: webhookEvent.id },
-        data: { workspaceId: page.workspaceId },
-      });
-    }
-
-    const facebookMessageEvents = parseFacebookMessageEvents(
-      payload as Parameters<typeof parseFacebookMessageEvents>[0]
-    );
-    for (const event of facebookMessageEvents) {
-      const page = await prisma.facebookPage.findUnique({
-        where: { pageId: event.pageId },
-        select: { workspaceId: true },
-      });
-      if (!page) continue;
-      await queue.add(FACEBOOK_MESSAGE_JOB_NAME, event, {
-        jobId: `fbmessage_${event.pageId}_${event.messageId.replace(/:/g, "_")}`,
-      });
-      await prisma.webhookEvent.update({
-        where: { id: webhookEvent.id },
-        data: { workspaceId: page.workspaceId },
-      });
-    }
+    const result = await enqueueWebhookPayload(payload);
 
     await prisma.webhookEvent.update({
       where: { id: webhookEvent.id },
       data: {
+        workspaceId: result.workspaceId ?? undefined,
         status: "PROCESSED",
         processedAt: new Date(),
       },

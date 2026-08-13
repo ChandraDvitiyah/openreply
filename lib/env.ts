@@ -34,7 +34,6 @@ export const serverEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
   TURSO_DATABASE_URL: z.string().startsWith("libsql://"),
   TURSO_AUTH_TOKEN: z.string().min(1),
-  UPSTASH_REDIS_URL: z.string().startsWith("rediss://"),
   ENCRYPTION_KEY: z.string().regex(HEX_32_BYTE),
   INSTAGRAM_APP_ID: z.string().min(1),
   INSTAGRAM_APP_SECRET: z.string().min(1),

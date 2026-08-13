@@ -646,3 +646,8 @@ sudo -u kult pm2 restart kult-web --update-env
 - For post-specific comment flows, use Meta's complete post ID in the form
   `PAGE_ID_POST_ID`; choose **every Page post** when unsure.
 - Check the worker logs and the Messenger delivery log.
+# Archived deployment guide
+
+> **Do not use the Upstash/BullMQ instructions in this historical guide.**
+> Production now uses the Turso-backed durable queue documented in
+> `OPERATIONS.md`. No Redis service or `UPSTASH_REDIS_URL` is required.

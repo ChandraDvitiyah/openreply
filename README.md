@@ -54,11 +54,11 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 4. On a keyword match, it queues a job.
 5. A background worker sends the private reply, and the public reply if you enabled one.
 
-The web app receives the webhook and serves the dashboard. A separate worker process does the sending, because the send has to survive rate limits and retries. Both talk to the same Turso database and Upstash Redis queue.
+The web app receives the webhook and serves the dashboard. A separate worker process does the sending, because the send has to survive rate limits and retries. Both use the same Turso database, including its durable job queue.
 
 ## Quick start
 
-You need a Meta developer app, Clerk, Turso, Upstash Redis, and an always-on place for the worker. The Instagram account you connect has to be a Business or Creator account, not a personal one.
+You need a Meta developer app, Clerk, Turso, and an always-on place for the worker. The Instagram account you connect has to be a Business or Creator account, not a personal one.
 
 The honest version: the code deploys in minutes, but the Meta app setup is the part that takes real time. Read [docs/setup.md](docs/setup.md) before you start. It is the single setup guide, covering hosting, your domain, the environment, and every Meta wrong turn so you do not have to find them yourself.
 
@@ -82,7 +82,7 @@ Full environment variables and the production layout are in [docs/setup.md](docs
 
 - Next.js 16 and React 19 for the web app and API routes
 - Prisma 7 with Turso/libSQL for every relational table
-- BullMQ on Upstash Redis over TLS for the send queue and the worker
+- A durable Turso-backed send queue, retry scheduler, rate limiter, and worker heartbeat
 - Clerk authentication
 - Tailwind CSS for the interface
 - The official Instagram API with Instagram Login

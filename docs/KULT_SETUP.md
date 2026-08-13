@@ -473,3 +473,8 @@ Do not market this as a public ManyChat replacement until Meta has approved your
 - Validate Meta webhook signatures; the upstream route already does this.
 - Retest the iOS in-app-browser escape after major Instagram updates.
 - Back up the Turso database before schema changes.
+# Archived setup guide
+
+> **Do not use the Upstash/BullMQ instructions in this historical guide.**
+> The current application stores queued jobs, rate limits, and worker health in
+> Turso. Follow `OPERATIONS.md`; no Redis service is required.

@@ -1,4 +1,3 @@
-import type { Job } from "bullmq";
 import { prisma } from "@/lib/db/client";
 import { decryptToken } from "@/lib/meta/oauth";
 import {
@@ -8,6 +7,7 @@ import {
 import type {
   ProcessFacebookCommentJob,
   ProcessFacebookMessageJob,
+  QueueJob,
 } from "@/lib/queue/client";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
 import { asStringArray } from "@/lib/utils/string-list";
@@ -143,7 +143,7 @@ async function deliverFacebookAutomation(args: {
 }
 
 export async function processFacebookMessage(
-  job: Job<ProcessFacebookMessageJob>
+  job: QueueJob<ProcessFacebookMessageJob>
 ) {
   const { pageId, senderId, messageId, messageText } = job.data;
   const automations = await findFacebookAutomations(
@@ -165,7 +165,7 @@ export async function processFacebookMessage(
 }
 
 export async function processFacebookComment(
-  job: Job<ProcessFacebookCommentJob>
+  job: QueueJob<ProcessFacebookCommentJob>
 ) {
   const { pageId, senderId, senderName, commentId, commentText, postId } = job.data;
   const automations = await findFacebookAutomations(
