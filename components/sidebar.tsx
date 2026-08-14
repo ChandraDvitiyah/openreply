@@ -10,7 +10,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
-  BarChart3,
   Clapperboard,
   Inbox,
   LayoutDashboard,
@@ -26,7 +25,6 @@ const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Views", href: "/views", icon: Clapperboard },
   { label: "Link Studio", href: "/links", icon: Link2 },
-  { label: "Overview", href: "/overview", icon: BarChart3 },
   { label: "Inbox", href: "/inbox", icon: Inbox },
   { label: "Campaigns", href: "/campaigns", icon: Workflow },
   { label: "Messenger", href: "/facebook", icon: MessagesSquare },
