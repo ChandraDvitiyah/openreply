@@ -572,7 +572,7 @@ Add:
 9. Meta's OAuth redirect is exactly
    `https://app.example.com/api/instagram/callback`.
 10. Sign in and connect one tester Instagram professional account.
-11. Open `/dashboard`, `/views`, `/overview`, and `/links`; verify that account,
+11. Open `/dashboard`, `/views`, and `/links`; verify that account,
     video, and link metrics load without server errors.
 12. Create a keyword campaign for one test reel.
 13. Comment from a different account.
