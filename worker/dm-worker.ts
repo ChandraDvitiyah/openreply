@@ -5,6 +5,8 @@ import { reconcileComments } from "@/lib/polling/comment-reconciler";
 import { syncAllWorkspacePerformance } from "@/lib/performance/social-sync";
 import { replayFailedWebhookEvents } from "@/lib/queue/webhook-enqueue";
 import os from "node:os";
+import { runSchedulerTick } from "@/lib/scheduler/worker";
+import { runMediaCleanupTick } from "@/lib/scheduler/cleanup";
 
 loadEnvConfig(process.cwd());
 
@@ -14,10 +16,10 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
 // Polling safety net for comments that webhooks miss. Runs in the worker because
 // it must fire every few minutes and Vercel's free crons only run once a day.
 const POLL_INTERVAL_MS = Number(
-  process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000
+  process.env.COMMENT_POLL_INTERVAL_MS ?? 5 * 60_000,
 );
 const PERFORMANCE_SYNC_INTERVAL_MS = Number(
-  process.env.PERFORMANCE_SYNC_INTERVAL_MS ?? 12 * 60 * 60_000
+  process.env.PERFORMANCE_SYNC_INTERVAL_MS ?? 12 * 60 * 60_000,
 );
 
 console.log("[DM Worker] Started");
@@ -36,7 +38,10 @@ async function heartbeat() {
 }
 
 void heartbeat();
-const heartbeatTimer = setInterval(() => void heartbeat(), HEARTBEAT_INTERVAL_MS);
+const heartbeatTimer = setInterval(
+  () => void heartbeat(),
+  HEARTBEAT_INTERVAL_MS,
+);
 
 async function poll() {
   try {
@@ -56,7 +61,7 @@ async function replayWebhooks() {
     const result = await replayFailedWebhookEvents();
     if (result.scanned > 0) {
       console.log(
-        `[Webhook Replay] ${result.replayed} recovered, ${result.failed} still failed`
+        `[Webhook Replay] ${result.replayed} recovered, ${result.failed} still failed`,
       );
     }
   } catch (error) {
@@ -73,7 +78,9 @@ async function syncPerformance() {
     const results = await syncAllWorkspacePerformance(30);
     const accounts = results.reduce((sum, result) => sum + result.synced, 0);
     const failures = results.reduce((sum, result) => sum + result.failed, 0);
-    console.log(`[Performance Sync] ${accounts} accounts refreshed, ${failures} failed`);
+    console.log(
+      `[Performance Sync] ${accounts} accounts refreshed, ${failures} failed`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[Performance Sync] Failed:", message);
@@ -84,15 +91,49 @@ async function syncPerformance() {
 setTimeout(() => void syncPerformance(), 30_000);
 const performanceSyncTimer = setInterval(
   () => void syncPerformance(),
-  PERFORMANCE_SYNC_INTERVAL_MS
+  PERFORMANCE_SYNC_INTERVAL_MS,
 );
+
+// Independent from DM processing: preparing a Reel must not hold up replies.
+let schedulerTask: Promise<void> | null = null;
+let lastSchedulerHeartbeatAt = 0;
+function scheduleTick() {
+  if (schedulerTask) return;
+  schedulerTask = (async () => {
+    for (let count = 0; count < 3; count += 1) {
+      if (!(await runSchedulerTick())) break;
+    }
+    for (let count = 0; count < 3; count += 1) {
+      if (!(await runMediaCleanupTick())) break;
+    }
+    if (Date.now() - lastSchedulerHeartbeatAt > HEARTBEAT_INTERVAL_MS) {
+      await recordWorkerHeartbeat(
+        { pid: process.pid, hostname: os.hostname(), startedAt },
+        "scheduler",
+      );
+      lastSchedulerHeartbeatAt = Date.now();
+    }
+  })()
+    .catch(() =>
+      console.error(
+        "[Scheduler] Delivery sweep failed; durable jobs will recover on the next sweep.",
+      ),
+    )
+    .finally(() => {
+      schedulerTask = null;
+    });
+}
+scheduleTick();
+const schedulerTimer = setInterval(scheduleTick, 15_000);
 
 async function shutdown(signal: string) {
   console.log(`[DM Worker] ${signal} received, closing worker`);
+  clearInterval(schedulerTimer);
   clearInterval(heartbeatTimer);
   clearInterval(pollTimer);
   clearInterval(replayTimer);
   clearInterval(performanceSyncTimer);
+  if (schedulerTask) await schedulerTask;
   await worker.close();
   process.exit(0);
 }

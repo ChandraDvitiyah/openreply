@@ -88,6 +88,8 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  scheduledPosts    ScheduledPost[]
+  scheduledMediaCleanup ScheduledMediaCleanup[]
 
   @@index([ownerId])
 }
@@ -144,6 +146,7 @@ model InstagramAccount {
   automations Automation[]
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
+  scheduledPosts ScheduledPost[]
 
   @@index([workspaceId])
 }
@@ -161,6 +164,7 @@ model FacebookPage {
   workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   automations FacebookAutomation[]
   messageLogs FacebookMessageLog[]
+  scheduledPosts ScheduledPost[]
 
   @@index([workspaceId])
 }
@@ -570,4 +574,86 @@ enum OperationalEventLevel {
   INFO
   WARNING
   ERROR
+}
+
+// This row is both the editorial record and the durable publishing job.
+// Account snapshots survive disconnects; tokens are always read at delivery.
+model ScheduledPost {
+  id                 String @id @default(cuid())
+  workspaceId        String
+  createdById        String
+  clientRequestId    String?
+  platform           SocialPlatform
+  instagramAccountId String?
+  facebookPageId     String?
+  accountName        String
+  title              String
+  caption            String @default("")
+  kind               ScheduledPostKind
+  mediaUrls          Json @default("[]")
+  publishingOptions  Json @default("{}")
+  preparation        Json @default("{}")
+  timezone           String @default("UTC")
+  scheduledAt        DateTime?
+  status             ScheduledPostStatus @default(DRAFT)
+  revision           Int @default(0)
+  attempts           Int @default(0)
+  processingChecks   Int @default(0)
+  availableAt        DateTime?
+  leaseOwner         String?
+  leaseExpiresAt     DateTime?
+  containerId        String?
+  publishStartedAt   DateTime?
+  externalPostId     String?
+  publishedAt        DateTime?
+  mediaCleanupQueuedAt DateTime?
+  lastError          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount? @relation(fields: [instagramAccountId], references: [id], onDelete: SetNull)
+  facebookPage FacebookPage? @relation(fields: [facebookPageId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, clientRequestId])
+  @@index([workspaceId, status, scheduledAt])
+  @@index([status, availableAt])
+  @@index([status, leaseExpiresAt])
+}
+
+enum ScheduledPostKind {
+  TEXT
+  IMAGE
+  VIDEO
+  REEL
+  CAROUSEL
+  STORY_IMAGE
+  STORY_VIDEO
+}
+
+model ScheduledMediaCleanup {
+  url String @id
+  workspaceId String
+  state String @default("PENDING")
+  availableAt DateTime @default(now())
+  leaseOwner String?
+  leaseExpiresAt DateTime?
+  attempts Int @default(0)
+  deletedAt DateTime?
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([state, availableAt])
+  @@index([workspaceId, state])
+}
+
+enum ScheduledPostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+  NEEDS_REVIEW
 }

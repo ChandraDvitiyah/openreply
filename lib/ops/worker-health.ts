@@ -30,13 +30,14 @@ export interface WorkerAlert {
 }
 
 export async function recordWorkerHeartbeat(
-  heartbeat: Omit<WorkerHeartbeat, "checkedAt" | "status" | "worker">
+  heartbeat: Omit<WorkerHeartbeat, "checkedAt" | "status" | "worker">,
+  workerKey: "dm" | "scheduler" = WORKER_STATE_KEY,
 ) {
   const checkedAt = new Date();
   await prisma.workerState.upsert({
-    where: { key: WORKER_STATE_KEY },
+    where: { key: workerKey },
     create: {
-      key: WORKER_STATE_KEY,
+      key: workerKey,
       status: "running",
       pid: heartbeat.pid,
       hostname: heartbeat.hostname,

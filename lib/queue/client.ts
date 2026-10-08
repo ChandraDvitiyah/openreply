@@ -316,8 +316,7 @@ export class DurableWorker extends EventEmitter {
   }
 
   private process(job: QueueJob<DmQueueJob>) {
-    let task: Promise<void>;
-    task = this.processor(job)
+    const task = this.processor(job)
       .then(() => this.complete(job))
       .catch((error: unknown) =>
         this.fail(

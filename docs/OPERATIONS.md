@@ -785,6 +785,17 @@ After an authorized production change, the agent must:
 6. Report exactly what changed, what was verified, and any remaining manual
    Meta/Clerk action.
 
+## Content scheduler release
+
+The scheduler is implemented in source with additive Turso migrations and a
+new delivery sweep in the existing Oracle worker. It requires both web and
+worker rollout plus Meta publishing permissions. See [SCHEDULER.md](SCHEDULER.md)
+for the supported content, delivery guarantees, activation sequence, and
+uncertain-delivery recovery. Scheduler file storage uses Backblaze B2; private
+media needs the scoped B2 credentials on both web and worker to generate fresh
+download links. See `docs/BACKBLAZE-SETUP.md` for bucket/CORS setup. This note does
+not assert a production deployment.
+
 ## 12. Official references
 
 - [Vercel environment-variable CLI](https://vercel.com/docs/cli/env)

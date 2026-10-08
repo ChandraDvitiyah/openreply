@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  CalendarDays,
   Clapperboard,
   Inbox,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import {
 
 const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Schedule", href: "/scheduler", icon: CalendarDays },
   { label: "Views", href: "/views", icon: Clapperboard },
   { label: "Link Studio", href: "/links", icon: Link2 },
   { label: "Inbox", href: "/inbox", icon: Inbox },
