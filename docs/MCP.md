@@ -21,7 +21,9 @@ An administrator completes the following configuration before rollout:
    scopes to the client. `offline_access` enables refresh access. The application
    name should clearly state that it manages the user's Kult workspace.
 3. Enable JWT access tokens and Clerk's `aud_claim_enabled` resource-audience
-   setting. Require S256 PKCE. Kult introspects every token through Clerk to
+   setting. Set the dedicated OAuth application's `audience_uri` to
+   `https://YOUR_KULT_HOST/api/mcp`; enabling audience claims alone does not
+   configure the application's resource. Require S256 PKCE. Kult introspects every token through Clerk to
    check authenticity and revocation, pins the dedicated client ID, and requires
    the exact issuer and audience `https://YOUR_KULT_HOST/api/mcp`. Tokens with a
    client-ID audience or no audience are rejected. See
@@ -109,6 +111,9 @@ Configured through Clerk CLI on 9 October 2026:
 - Issuer: `https://flowing-blowfish-57.clerk.accounts.dev`.
 - Dedicated client: `BRsuoXDVT3zRmxC0` (public identifier).
 - Resource: `https://kultreply.vercel.app/api/mcp`.
+- The dedicated Clerk OAuth application's `audience_uri` is explicitly set to
+  that resource through Clerk CLI. Reconnect accounts linked before this change
+  to obtain a token with the configured audience; the client ID and secret are unchanged.
 - Consent and PKCE enabled; JWTs and resource-audience claims enabled.
   Dynamic client registration remains disabled.
 - Callback: `https://chatgpt.com/connector_platform_oauth_redirect`, matching
@@ -140,16 +145,26 @@ Sign in with the existing Kult workspace account when granting consent.
 
 ### If ChatGPT reports no tools
 
+Production logs showed discovery returning HTTP 406 with JSON-only or wildcard
+Accept headers. The JSON response transport now accepts those headers, while
+clients explicitly excluding JSON still receive 406. Tool definitions use
+JSON Schema Draft 7 and are compiled by a Draft 7 validator in regression tests.
+The previous anonymous-discovery fix alone did not resolve the user's failure.
+
 Open Kult's plugin details in ChatGPT and choose **Refresh** to retrieve the
 current tool catalogue. Start a new conversation with Kult selected. If the
 connection was created before the discovery fix, remove it and add it again
 with the same MCP URL and OAuth client settings if refreshing does not help.
+If the connection predates the Clerk audience correction, reconnect it once
+with the same URL, client ID and secret; refreshing tool definitions alone
+cannot replace a token with the wrong audience. Authenticated tool requests
+keep issuer, resource, client-ID, expiry, revocation, scope and workspace checks.
 
 The discovery fix lets an anonymous real SDK client initialize and list all 47
 OAuth-protected tools. Anonymous calls return the tool-level account-linking
 challenge without querying account data or performing actions. Authenticated
 calls retain current membership, workspace and scope checks. Validation passed
-303 tests, typecheck and lint with zero errors and three existing warnings.
+315 tests, typecheck and lint with zero errors and three existing warnings.
 These checks verify the server contract; the user's ChatGPT connection remains
 the final host-specific check.
 

@@ -6,6 +6,7 @@ import { createServer, type Server } from "node:http";
 import { NextRequest } from "next/server";
 import { readdir } from "node:fs/promises";
 import { z } from "zod";
+import Ajv from "ajv";
 
 const mocks = vi.hoisted(() => ({
   clerkAuth: vi.fn(), currentUser: vi.fn(), verify: vi.fn(), oauthVerify: vi.fn(), keyCreate: vi.fn(), keyList: vi.fn(), keyGet: vi.fn(), keyRevoke: vi.fn(),
@@ -220,6 +221,53 @@ describe("Kult MCP protocol and product workflows", () => {
 });
 
 describe("MCP credential and transport boundaries", () => {
+  it.each([null, "application/json", "*/*", "application/*", "application/json; q=0.8", "application/json, text/event-stream"])(
+    "discovers tools with ordinary JSON HTTP Accept headers: %s", async (accept) => {
+      for (const token of [null, "write-key", "oat_valid"]) {
+        const initialize = rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "discovery", version: "1" } }, token);
+        if (accept === null) initialize.headers.delete("accept"); else initialize.headers.set("accept", accept);
+        expect((await POST(initialize)).status).toBe(200);
+        const request = rpc("tools/list", undefined, token);
+        if (accept === null) request.headers.delete("accept"); else request.headers.set("accept", accept);
+        const response = await POST(request);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("content-type")).toContain("application/json");
+        expect((await response.json()).result.tools).toHaveLength(47);
+      }
+    });
+
+  it.each(["text/plain", "text/event-stream", "application/json;q=0", "application/json;q=0, */*;q=1"])(
+    "rejects clients that exclude JSON: %s", async (accept) => {
+      const request = rpc("tools/list", undefined, null); request.headers.set("accept", accept);
+      expect((await POST(request)).status).toBe(406);
+      expect(mocks.accounts).not.toHaveBeenCalled();
+    });
+
+  it("validates every advertised input and output schema with a Draft 7 discovery validator", async () => {
+    const body = await (await POST(rpc("tools/list", undefined, null))).json();
+    const validator = new Ajv({ allErrors: true, logger: false });
+    for (const tool of body.result.tools) {
+      for (const schema of [tool.inputSchema, tool.outputSchema].filter(Boolean)) {
+        expect(() => validator.compile(schema), tool.name).not.toThrow();
+      }
+    }
+    const create = body.result.tools.find((tool: { name: string }) => tool.name === "create_campaign");
+    const validate = validator.compile(create.inputSchema);
+    expect(validate({ body: campaignBody })).toBe(true);
+    expect(validate({ body: { name: "" } })).toBe(false);
+  });
+
+  it("preserves authentication and mutation protection with JSON-only discovery headers", async () => {
+    const invalid = rpc("tools/list", undefined, "invalid"); invalid.headers.set("accept", "application/json");
+    expect((await POST(invalid)).status).toBe(401);
+    const mutation = rpc("tools/call", { name: "create_campaign", arguments: { body: campaignBody } }, null);
+    mutation.headers.set("accept", "application/json");
+    const output = await (await POST(mutation)).json();
+    expect(output.result.isError).toBe(true);
+    expect(output.result._meta["mcp/www_authenticate"]).toHaveLength(1);
+    expect(mocks.createCampaign).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid keys even with a browser cookie", async () => {
     const request = rpc("tools/list", undefined, "invalid");
     request.headers.set("Cookie", "__session=browser-session");

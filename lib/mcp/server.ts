@@ -78,8 +78,8 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
     const securitySchemes = [{ type: "oauth2", scopes: oauthToolScopes(write) }];
     const _meta = { ...config._meta, securitySchemes };
     catalogue.push({ name, description: config.description,
-      inputSchema: z.toJSONSchema(z.strictObject(config.inputSchema), { io: "input" }) as Tool["inputSchema"],
-      ...(config.outputSchema ? { outputSchema: z.toJSONSchema(z.strictObject(config.outputSchema)) as Tool["outputSchema"] } : {}),
+      inputSchema: z.toJSONSchema(z.strictObject(config.inputSchema), { io: "input", target: "draft-7" }) as Tool["inputSchema"],
+      ...(config.outputSchema ? { outputSchema: z.toJSONSchema(z.strictObject(config.outputSchema), { target: "draft-7" }) as Tool["outputSchema"] } : {}),
       annotations: config.annotations, securitySchemes, _meta });
     return { ...config, _meta };
   }

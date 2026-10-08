@@ -953,5 +953,33 @@ before release, and a fresh Turso export was restored with integrity and all
 credential or provider setting changes are needed. Refresh Kult's tools in
 ChatGPT after deployment; the user's real ChatGPT OAuth flow remains unverified.
 
+## ChatGPT authenticated action discovery — 9 October 2026
+
+The anonymous-discovery change did not resolve the user's ChatGPT error.
+Production request logs showed repeated 406 responses during discovery, plus
+401 responses after linking. JSON-only and wildcard Accept headers reproduced
+the 406 exactly: the MCP SDK required both JSON and SSE even though this server
+always returns JSON. The route now accepts HTTP JSON/wildcard negotiation and
+adapts that request for the JSON transport. Clients excluding JSON remain
+rejected. Tool schemas now explicitly target Draft 7; all 48 input/output
+schemas compile in a Draft 7 validator. Authentication and mutation protection
+remain enforced with the affected headers.
+
+Clerk CLI inspection also showed `aud_claim_enabled: true` but the dedicated
+application's `audience_uri: null`. The application was updated through Clerk
+CLI to use `https://kultreply.vercel.app/api/mcp`; readback confirmed that value,
+with the same client ID, consent, PKCE, scopes, redirect and secret. Existing
+connections need a fresh OAuth reconnect to receive the corrected audience.
+The server's resource-audience checks were not relaxed. Public diagnostic logs
+now record only rejection phase/status, controlled error text and protocol
+headers, without credentials, cookies, tool arguments or account data.
+
+Release checks passed 315 tests, typecheck, production build and lint with zero
+errors and the same three warnings. Production health was OK before changes.
+A fresh consistent Turso export was restored with integrity OK and all 30
+table counts verified, then encrypted outside Git. There is no schema or
+dependency change. Verify the deployed JSON-only discovery path and require
+the user's fresh ChatGPT connection before claiming end-to-end host success.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.
