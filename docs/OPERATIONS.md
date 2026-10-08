@@ -5,7 +5,7 @@ written so that a future maintainer or coding agent can recover from a new
 computer, a lost SSH key, or a deleted worker VM with the Git repository and
 access to the service accounts. It intentionally contains no secret values.
 
-Last verified: **14 August 2026**.
+Last verified: **9 October 2026**.
 
 ## 1. Read this first
 
@@ -787,14 +787,35 @@ After an authorized production change, the agent must:
 
 ## Content scheduler release
 
-The scheduler is implemented in source with additive Turso migrations and a
-new delivery sweep in the existing Oracle worker. It requires both web and
-worker rollout plus Meta publishing permissions. See [SCHEDULER.md](SCHEDULER.md)
-for the supported content, delivery guarantees, activation sequence, and
-uncertain-delivery recovery. Scheduler file storage uses Backblaze B2; private
-media needs the scoped B2 credentials on both web and worker to generate fresh
-download links. See `docs/BACKBLAZE-SETUP.md` for bucket/CORS setup. This note does
-not assert a production deployment.
+Scheduler code release **`5439a45873314d08f8d34c788284450ba1d98db9`** was
+pushed to `origin/main` and deployed to Vercel production on 9 October 2026
+(Asia/Kolkata). Vercel deployment `dpl_4rUhyMoupxSTejdfVJwVJTixahuS` is READY
+and serves `https://kultreply.vercel.app`. Oracle was updated to the same code,
+dependencies installed, Prisma regenerated, and `kult-worker` restarted/saved.
+All three additive scheduler migrations are applied. Both `dm` and `scheduler`
+heartbeats are fresh, and public health is OK.
+
+A fresh protected Turso dump was taken before migration and successfully
+restored into a disposable database with integrity OK. The release passed 229
+tests, typecheck, production build and lint (zero errors; three existing
+warnings). Scheduler APIs reject unauthenticated writes/uploads/previews, and
+the live Schedule page requires sign-in. Authenticated composer behavior was
+verified locally; no production browser session was available for that check.
+
+The four B2 variables are installed as Vercel production sensitive variables
+and in the mode-600 Oracle environment. Actual signed upload/download, unchanged
+bytes, private access protection, production-origin CORS and permanent deletion
+of both test versions passed locally and on Oracle. No live social post was
+created. Clerk and Facebook application credentials passed read-only API checks;
+the existing encryption key was preserved, with worker/local parity verified.
+
+There were no connected Instagram accounts or Facebook Pages at release time.
+Users must connect accounts and grant `instagram_business_content_publish` /
+`pages_manage_posts`; actual Instagram OAuth and Meta publishing remain
+unverified until then. See [SCHEDULER.md](SCHEDULER.md) for supported content and
+delivery recovery, and [BACKBLAZE-SETUP.md](BACKBLAZE-SETUP.md) for storage setup.
+After confirmed publication, owned media is removed following a 16-minute
+safety window; other unpublished posts keep shared files until no longer needed.
 
 ## 12. Official references
 
