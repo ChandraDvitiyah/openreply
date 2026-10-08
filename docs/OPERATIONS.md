@@ -890,5 +890,29 @@ for MCP configuration.
 - [Turso point-in-time recovery](https://docs.turso.tech/features/point-in-time-recovery)
 - [Clerk MFA strategies](https://clerk.com/docs/guides/configure/auth-strategies/sign-up-sign-in-options)
 
+## Instagram connection token endpoint fix — 9 October 2026
+
+Source change: `7d39114` (Instagram connection and token refresh).
+Production callback logs showed Meta error 100, `Unsupported request - method
+type: get`, during the long-lived token exchange after successful consent.
+Instagram token exchange and refresh now use the unversioned
+`https://graph.instagram.com/access_token` and `/refresh_access_token` endpoints;
+account, media, and webhook calls retain the configured Graph API version.
+Successful Instagram connections return to Settings with a confirmation and
+the connected profile. Settings also displays Instagram/Facebook callback
+errors that were previously ignored.
+
+The release passed 285 tests, typecheck, production build, and lint with zero
+errors (three existing warnings). Regression coverage exercises the complete
+callback, encrypted token persistence, failure/invalid-state handling, and
+token endpoint versioning. A fresh encrypted Turso export was restored locally
+with integrity OK and all 30 table counts verified before release. There is no
+schema or credential change. Deploy the web release and update/restart the
+Oracle worker because the token helper is shared. Confirm the actual deployed
+commit and fresh worker heartbeat through Vercel and `/api/health`.
+
+A fresh Connect Instagram attempt is required for the user's real Meta
+consent/code exchange; local regression tests do not verify that external flow.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.
