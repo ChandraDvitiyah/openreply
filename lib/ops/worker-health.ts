@@ -117,9 +117,9 @@ export async function recordWorkerAlert(alert: Omit<WorkerAlert, "createdAt">) {
   });
 }
 
-export async function getWorkerAlerts(limit = 10): Promise<WorkerAlert[]> {
+export async function getWorkerAlerts(limit = 10, workspaceId?: string): Promise<WorkerAlert[]> {
   const events = await prisma.operationalEvent.findMany({
-    where: { source: "WORKER", level: { in: ["WARNING", "ERROR"] } },
+    where: { source: "WORKER", level: { in: ["WARNING", "ERROR"] }, ...(workspaceId ? { workspaceId } : {}) },
     orderBy: { createdAt: "desc" },
     take: Math.max(0, limit),
     select: { level: true, message: true, payload: true, createdAt: true },

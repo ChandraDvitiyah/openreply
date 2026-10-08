@@ -1,23 +1,10 @@
+import { facebookAutomationSchema } from "@/lib/automations/facebook-validation";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import {
   canManageWorkspace,
   getCurrentWorkspaceContext,
 } from "@/lib/workspace-access";
-
-const automationSchema = z.object({
-  facebookPageId: z.string().min(1),
-  type: z.enum(["MESSENGER_AUTORESPONDER", "COMMENT_TO_MESSAGE"]),
-  name: z.string().trim().min(1).max(100),
-  postId: z.string().trim().max(200).optional().nullable(),
-  matchAnyPost: z.boolean().default(true),
-  keywords: z.array(z.string().trim().min(1).max(100)).max(50).default([]),
-  matchAnyWord: z.boolean().default(false),
-  replyMessage: z.string().trim().min(1).max(2000),
-  wholeWordMatch: z.boolean().default(true),
-  isActive: z.boolean().default(true),
-});
 
 export async function GET() {
   const context = await getCurrentWorkspaceContext();
@@ -54,7 +41,7 @@ export async function POST(request: NextRequest) {
   if (!canManageWorkspace(context.role)) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
-  const parsed = automationSchema.safeParse(await request.json().catch(() => null));
+  const parsed = facebookAutomationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { success: false, error: "Invalid Facebook automation", details: parsed.error.flatten() },

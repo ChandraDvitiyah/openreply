@@ -1,5 +1,4 @@
-import { currentUser } from "@clerk/nextjs/server";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, getCurrentProfile } from "@/lib/auth";
 import {
   createBioLink,
   ensureBioProfile,
@@ -20,11 +19,11 @@ function isWebUrl(value: string | null | undefined) {
 export async function GET() {
   const userId = await getCurrentUserId();
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const user = await currentUser();
+  const user = await getCurrentProfile();
   const profile = await ensureBioProfile(userId, {
-    displayName: user?.fullName,
-    email: user?.primaryEmailAddress?.emailAddress,
-    avatarUrl: user?.imageUrl,
+    displayName: user.name,
+    email: user.email,
+    avatarUrl: user.image,
   });
   return Response.json({ profile, links: await listBioLinks(userId) });
 }

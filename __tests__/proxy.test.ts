@@ -30,4 +30,12 @@ describe("proxy routing", () => {
       })
     ).toBe(true);
   });
+
+  it("lets MCP verify bearer keys without a browser handshake", () => {
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/api/mcp" })).toBe(false);
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/.well-known/oauth-protected-resource" })).toBe(false);
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/.well-known/oauth-protected-resource/api/mcp" })).toBe(false);
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/api/agent-keys" })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: "/agents" })).toBe(true);
+  });
 });

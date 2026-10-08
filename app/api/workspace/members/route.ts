@@ -120,6 +120,12 @@ export async function POST(request: NextRequest) {
   });
 
   if (existingUser) {
+    const existingMember = await prisma.workspaceMember.findUnique({
+      where: { workspaceId_userId: { workspaceId: context.workspaceId, userId: existingUser.id } },
+    });
+    if (existingMember?.role === "OWNER") {
+      return NextResponse.json({ success: false, error: "The workspace owner cannot be reassigned by invitation" }, { status: 400 });
+    }
     await prisma.workspaceMember.upsert({
       where: {
         workspaceId_userId: {

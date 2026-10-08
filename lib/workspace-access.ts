@@ -2,6 +2,7 @@ import type { Workspace, WorkspaceRole } from "@/app/generated/prisma/client";
 import { getCurrentUserId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
+import { agentContext } from "@/lib/mcp/context";
 
 export type WorkspaceContext = {
   userId: string;
@@ -32,6 +33,8 @@ export function canManageBilling(role: WorkspaceRole) {
 }
 
 export async function getCurrentWorkspaceContext(): Promise<WorkspaceContext | null> {
+  const agent = agentContext.getStore();
+  if (agent) return agent;
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
@@ -71,4 +74,3 @@ export async function getCurrentWorkspaceContext(): Promise<WorkspaceContext | n
     role: createdMembership?.role ?? "OWNER",
   };
 }
-

@@ -819,6 +819,48 @@ safety window; other unpublished posts keep shared files until no longer needed.
 
 ## 12. Official references
 
+### MCP source release
+
+The agent interface is implemented at `/api/mcp`, with browser credential
+management at `/agents` and `/api/agent-keys`. The personal account's existing
+Clerk Kult application (`app_3HS5PZN7qkPN05ik7BcmCm2oRfL`, development instance
+`ins_3HS5PYwss8Z51ls24X9EGRAivrP`) was configured through Clerk CLI on
+9 October 2026. Issuer: `https://flowing-blowfish-57.clerk.accounts.dev`.
+
+The dedicated ChatGPT client ID is `BRsuoXDVT3zRmxC0`. Consent, S256 PKCE,
+JWT access tokens and resource-audience claims are enabled. Assigned scopes are
+`openid profile email offline_access`; this instance's public API rejected
+custom product scopes. Dynamic registration remains disabled. The callback is
+`https://chatgpt.com/connector_platform_oauth_redirect`.
+
+Vercel **Production** and local configuration now contain:
+
+```dotenv
+MCP_OAUTH_CLIENT_ID=BRsuoXDVT3zRmxC0
+MCP_OAUTH_ISSUER=https://flowing-blowfish-57.clerk.accounts.dev
+MCP_OAUTH_SCOPE_MODE=clerk
+MCP_OAUTH_WRITE_ENABLED=true
+```
+
+In this mode, product writes require the explicit server setting and the user's
+current workspace role. Every token is introspected through Clerk and must have
+the canonical MCP resource audience. The client secret is stored privately
+outside Git for ChatGPT's settings; it is never a Kult runtime variable.
+The local stale app URL was corrected to `https://kultreply.vercel.app`.
+Existing Vercel application credentials were preserved.
+
+Other clients can use Clerk's User API keys feature when enabled. See
+[MCP.md](MCP.md) for setup, permission boundaries and release smoke checks.
+MCP adds no database migration. It requires a web release; existing
+scheduler/worker/storage prerequisites still apply to publishing tools.
+Provider and environment configuration does not deploy source. The MCP web
+release, ChatGPT installation and live OAuth exchange remain unverified.
+
+Before configuring the provider and Vercel, live health was checked and a
+consistent Turso export was restored locally to verify integrity and table
+counts, then encrypted outside Git. No database or worker changes were made
+for MCP configuration.
+
 - [Vercel environment-variable CLI](https://vercel.com/docs/cli/env)
 - [Vercel environment scopes](https://vercel.com/docs/environment-variables)
 - [OCI: connect to a Linux instance](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/connect-to-linux-instance.htm)

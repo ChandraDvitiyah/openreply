@@ -26,11 +26,12 @@ function getDayWindow(daysAgo: number) {
   return { start, end };
 }
 
-export async function getCampaignReportBySlug(shareSlug: string) {
+export async function getCampaignReportBySlug(shareSlug: string, workspaceId?: string) {
   const automation = await prisma.automation.findFirst({
     where: {
       reportShareSlug: shareSlug,
       reportShareEnabled: true,
+      ...(workspaceId ? { workspaceId } : {}),
     },
     select: {
       id: true,

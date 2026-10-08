@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clerkClient, currentUser } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId, getCurrentProfile } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 
 const profileSchema = z.object({
@@ -14,14 +14,14 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
   const [clerkUser, localUser] = await Promise.all([
-    currentUser(),
+    getCurrentProfile(),
     prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
   ]);
   return NextResponse.json({
     success: true,
     data: {
-      name: clerkUser?.fullName ?? localUser?.name ?? "",
-      email: clerkUser?.primaryEmailAddress?.emailAddress ?? localUser?.email ?? null,
+      name: clerkUser.name ?? localUser?.name ?? "",
+      email: clerkUser.email ?? localUser?.email ?? null,
     },
   });
 }

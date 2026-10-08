@@ -10,6 +10,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  Bot,
   CalendarDays,
   Clapperboard,
   Inbox,
@@ -32,6 +33,7 @@ const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: "Messenger", href: "/facebook", icon: MessagesSquare },
   { label: "DM Logs", href: "/logs", icon: ScrollText },
   { label: "Settings", href: "/settings", icon: Settings },
+  { label: "AI agents", href: "/agents", icon: Bot },
   { label: "Diagnostics", href: "/diagnostics", icon: Activity },
 ];
 

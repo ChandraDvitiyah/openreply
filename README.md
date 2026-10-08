@@ -42,6 +42,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - Performance center. Compare Instagram/Facebook views, reach, engagement and automated DMs, then measure bio-page views and every tracked redirect.
 - Workspaces and roles. Owner, admin, and member roles with invite links, useful if you run this for clients.
 - Campaign templates. Start from a preset instead of a blank form.
+- AI agents via MCP. Connect ChatGPT through OAuth to manage campaigns, publishing, inbox, analytics, Link Studio and team operations. Other MCP clients can use revocable workspace keys. See [docs/MCP.md](docs/MCP.md).
 - Inbox. Read your Instagram DM conversations and reply from the dashboard, inside Meta's 24-hour messaging window. Cached so it loads instantly on repeat visits.
 - DM logs. Every send, skip, and failure is logged with a reason.
 - Self-comment filtering. Your own comments never trigger a reply, since Meta rejects DMing yourself anyway.

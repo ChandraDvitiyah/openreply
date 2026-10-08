@@ -1,6 +1,7 @@
 import { auth as clerkAuth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
+import { agentContext } from "@/lib/mcp/context";
 
 type KultSession = {
   user: {
@@ -38,7 +39,7 @@ async function syncClerkUser(userId: string) {
 // Compatibility wrapper so the upstream OpenReply routes keep their existing
 // session-shaped contract while Clerk owns authentication.
 export async function auth(): Promise<KultSession | null> {
-  const { userId } = await clerkAuth();
+  const userId = await getCurrentUserId();
   if (!userId) return null;
 
   const user = await syncClerkUser(userId);
@@ -53,11 +54,15 @@ export async function auth(): Promise<KultSession | null> {
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
+  const agent = agentContext.getStore();
+  if (agent) return agent.userId;
   const { userId } = await clerkAuth();
   return userId;
 }
 
 export async function getCurrentWorkspaceId(): Promise<string | null> {
+  const agent = agentContext.getStore();
+  if (agent) return agent.workspaceId;
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
@@ -67,4 +72,16 @@ export async function getCurrentWorkspaceId(): Promise<string | null> {
   const user = await syncClerkUser(userId);
   const createdWorkspace = await ensureWorkspaceForUser(userId, user?.email);
   return createdWorkspace.id;
+}
+
+// Agent requests have no Clerk browser session; use the verified user's record.
+export async function getCurrentProfile() {
+  const agent = agentContext.getStore();
+  if (agent) {
+    const user = await prisma.user.findUnique({ where: { id: agent.userId } });
+    return { name: user?.name ?? null, email: user?.email ?? null, image: user?.image ?? null };
+  }
+  const user = await currentUser();
+  return { name: user?.fullName ?? null, email: user?.primaryEmailAddress?.emailAddress ?? null,
+    image: user?.imageUrl ?? null };
 }
