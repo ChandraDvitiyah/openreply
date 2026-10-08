@@ -60,9 +60,14 @@ An administrator completes the following configuration before rollout:
 
 The public resource discovery document is available at
 `/.well-known/oauth-protected-resource/api/mcp` and the root fallback
-`/.well-known/oauth-protected-resource`. Unauthenticated MCP requests return a
-`WWW-Authenticate` challenge pointing to that document and requesting
-the configured account-linking and offline scopes. Clerk owns authorization
+`/.well-known/oauth-protected-resource`. Initialization, tool listing and static
+workflow resources are public so ChatGPT can discover tools before account
+linking. Every tool declares OAuth and requires a verified credential to run,
+including profile, templates and publishing capabilities. Anonymous tool calls
+return an error with `_meta["mcp/www_authenticate"]` pointing to that document
+and requesting the configured account-linking and offline scopes. Supplied
+invalid credentials still return an HTTP `WWW-Authenticate` challenge and
+never fall back to anonymous execution. Clerk owns authorization
 codes, PKCE, consent and refresh-token exchange. No OAuth client secret is stored in Kult or exposed to
 MCP tools. Missing server configuration fails closed with 503.
 
@@ -132,6 +137,21 @@ revocation. Public application, database, queue and worker health are OK.
 The remaining user step is installing and linking Kult in ChatGPT. A real
 ChatGPT OAuth code exchange and refresh remain unverified until that step.
 Sign in with the existing Kult workspace account when granting consent.
+
+### If ChatGPT reports no tools
+
+Open Kult's plugin details in ChatGPT and choose **Refresh** to retrieve the
+current tool catalogue. Start a new conversation with Kult selected. If the
+connection was created before the discovery fix, remove it and add it again
+with the same MCP URL and OAuth client settings if refreshing does not help.
+
+The discovery fix lets an anonymous real SDK client initialize and list all 47
+OAuth-protected tools. Anonymous calls return the tool-level account-linking
+challenge without querying account data or performing actions. Authenticated
+calls retain current membership, workspace and scope checks. Validation passed
+303 tests, typecheck and lint with zero errors and three existing warnings.
+These checks verify the server contract; the user's ChatGPT connection remains
+the final host-specific check.
 
 ## Other MCP clients (API keys)
 

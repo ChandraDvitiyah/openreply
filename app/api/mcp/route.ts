@@ -15,7 +15,10 @@ export async function POST(request: Request) {
   if (origin && origin !== new URL(getBaseUrl()).origin)
     return Response.json({ error: "Origin is not allowed." }, { status: 403 });
   try {
-    const identity = await authenticateAgent(request);
+    // ChatGPT discovers the protocol and OAuth-protected tool catalogue before
+    // account linking. Supplied credentials still fail closed; anonymous tool
+    // calls are gated by the server and return a tool-level OAuth challenge.
+    const identity = request.headers.has("authorization") ? await authenticateAgent(request) : null;
     const server = createAgentServer(identity, getBaseUrl());
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: 1024 * 1024,

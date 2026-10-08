@@ -3,7 +3,7 @@ import { ListToolsRequestSchema, type Tool } from "@modelcontextprotocol/sdk/typ
 import { prisma } from "@/lib/db/client";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { AgentAuthError, resolveAgentWorkspace, WRITE_SCOPE, type AgentIdentity } from "./auth";
-import { oauthToolScopes } from "./oauth";
+import { authChallenge, oauthToolScopes } from "./oauth";
 import { agentContext } from "./context";
 import { AGENT_TOOLS, invokeProductTool, isWriteTool } from "./tools";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
@@ -47,11 +47,29 @@ function result(data: Record<string, unknown>, isError = false) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }], structuredContent: data, isError };
 }
 
-export function createAgentServer(identity: AgentIdentity, baseUrl: string) {
+export function createAgentServer(identity: AgentIdentity | null, baseUrl: string) {
   const server = new McpServer({ name: "kult", version: "1.0.0" }, {
     instructions: AGENT_GUIDE, maxToolInputElements: 20_000,
   });
-  const writable = identity.scopes.includes(WRITE_SCOPE);
+  const writable = !identity || identity.scopes.includes(WRITE_SCOPE);
+  async function withAccess(write: boolean, action: (identity: AgentIdentity,
+    context: Awaited<ReturnType<typeof resolveAgentWorkspace>>) => Promise<ReturnType<typeof result>>) {
+    try {
+      if (!identity) throw new AgentAuthError("Connect your Kult account to continue.", 401);
+      if (write && !identity.scopes.includes(WRITE_SCOPE))
+        throw new AgentAuthError("Write access is required.", 403, "insufficient_scope");
+      // Re-read membership for every call, including profile and static tools.
+      const context = await resolveAgentWorkspace(identity);
+      return await action(identity, context);
+    } catch (error) {
+      const authError = error instanceof AgentAuthError;
+      return { ...result({ status: authError ? error.status : 500,
+        error: authError ? error.message : "The product operation failed. Check diagnostics before retrying." }, true),
+      ...(authError && (error.status === 401 || error.challenge) ? {
+        _meta: { "mcp/www_authenticate": [authChallenge(error.challenge ?? "invalid_token")] },
+      } : {}) };
+    }
+  }
   const catalogue: Array<Tool & { securitySchemes: Array<{ type: string; scopes: string[] }> }> = [];
   // SDK 1.x retains extension metadata but doesn't emit the top-level
   // securitySchemes extension. Keep both forms for OpenAI host compatibility.
@@ -71,43 +89,33 @@ export function createAgentServer(identity: AgentIdentity, baseUrl: string) {
       description: tool.description, inputSchema: tool.input,
       annotations: { readOnlyHint: !isWriteTool(tool), destructiveHint: tool.destructive ?? false,
         idempotentHint: !isWriteTool(tool), openWorldHint: true },
-    }, isWriteTool(tool)), async (args) => {
-      try {
-        // Re-read membership for every tool call: role changes/removal take
-        // effect even during a long-running request. No cached role in a key.
-        const context = await resolveAgentWorkspace(identity);
+    }, isWriteTool(tool)), async (args) => withAccess(isWriteTool(tool), async (_identity, context) => {
         const output = await agentContext.run(context, () => invokeProductTool(tool, args, baseUrl));
         return result({ status: output.status, ...output.data }, output.status >= 400);
-      } catch (error) {
-        return result({ status: error instanceof AgentAuthError ? error.status : 500,
-          error: error instanceof AgentAuthError ? error.message : "The product operation failed. Check diagnostics before retrying." }, true);
-      }
-    });
+    }));
   }
   server.registerTool("get_workspace", describe("get_workspace", { description: "Read the credential's workspace, current role, and allowed scopes.", inputSchema: {},
-    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => {
-    const context = await resolveAgentWorkspace(identity);
+    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async (identity, context) => {
     return result({ workspace: { id: context.workspaceId, name: context.workspace.name }, role: context.role, scopes: identity.scopes });
-  });
+  }));
   server.registerTool("list_campaign_templates", describe("list_campaign_templates", { description: "Read all built-in campaign templates, example messages and playbooks.", inputSchema: {},
-    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => result({ templates: CAMPAIGN_TEMPLATES }));
+    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async () => result({ templates: CAMPAIGN_TEMPLATES })));
   server.registerTool("get_publishing_capabilities", describe("get_publishing_capabilities", { description: "Read supported post types and workflow requirements for both platforms.", inputSchema: {},
-    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => result({
+    annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async () => result({
     instagram: supportedKinds("INSTAGRAM"), facebook: supportedKinds("FACEBOOK"),
     delivery: "asynchronous", media: "Public HTTPS URLs or workspace uploads; Instagram images must be JPEG.",
-  }));
+  })));
   const profileSchema = { id: z.string().min(1).regex(/\S/), name: z.string().optional(),
     email: z.string().optional(), nickname: z.string().optional() };
   server.registerTool("get_connected_profile", describe("get_connected_profile", {
     description: "Read the Kult identity connected to ChatGPT. The opaque ID stays unchanged across token refresh and reconnection.",
     inputSchema: {}, outputSchema: profileSchema, _meta: { "openai/profile": true },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }), async () => {
-    const context = await resolveAgentWorkspace(identity);
+  }), async () => withAccess(false, async (identity, context) => {
     const user = await prisma.user.findUnique({ where: { id: identity.userId }, select: { name: true, email: true } });
     return result({ id: identity.userId, ...(user?.name ? { name: user.name } : {}),
       ...(user?.email ? { email: user.email } : {}), nickname: context.workspace.name });
-  });
+  }));
   server.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: catalogue }));
   server.registerResource("agent-guide", "kult://guide", { mimeType: "text/plain", description: "End-to-end product workflows and consent boundaries." },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: "text/plain", text: AGENT_GUIDE }] }));

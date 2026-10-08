@@ -936,5 +936,22 @@ profile identity and secrets stay out of diagnostics. Validation passed 296
 tests, typecheck, lint and production build. Compare the actual OAuth token
 with the owner's working Meta API token before changing provider settings.
 
+## MCP tool discovery compatibility — 9 October 2026
+
+ChatGPT reported no available tools while anonymous MCP initialization and
+tool listing returned 401. Protocol initialization, tool listing and static
+workflow resources now allow anonymous discovery. All 47 tools declare OAuth;
+every tool call still requires a verified credential and current membership.
+Anonymous calls return `_meta["mcp/www_authenticate"]` so ChatGPT can request
+account linking. Supplied invalid credentials remain rejected at the HTTP
+boundary. No product data or action is available through anonymous discovery.
+
+The isolated release passed 303 tests, typecheck, lint with zero errors and
+three existing warnings, and a production build. Production health was checked
+before release, and a fresh Turso export was restored with integrity and all
+30 table counts verified before encryption outside Git. No schema, dependency,
+credential or provider setting changes are needed. Refresh Kult's tools in
+ChatGPT after deployment; the user's real ChatGPT OAuth flow remains unverified.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.

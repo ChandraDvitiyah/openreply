@@ -34,16 +34,16 @@ const clients: Client[] = [];
 const httpServers: Server[] = [];
 const key = { id: "key_one", subject: "user_one", claims: { purpose: "kult-mcp", workspaceId: "workspace_one" },
   scopes: ["kult:read", "kult:write"], revoked: false, expired: false, expiration: Date.now() + 86400000, secret: "secret" };
-function rpc(method: string, params?: unknown, token = "write-key") {
+function rpc(method: string, params?: unknown, token: string | null = "write-key") {
   return new Request("http://localhost:3000/api/mcp", { method: "POST", headers: {
-    Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25",
+    ...(token === null ? {} : { Authorization: `Bearer ${token}` }), "Content-Type": "application/json", Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25",
   }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
 }
-async function connect(token = "write-key") {
+async function connect(token: string | null = "write-key") {
   const client = new Client({ name: "kult-test-agent", version: "1.0.0" });
   clients.push(client);
   await client.connect(new StreamableHTTPClientTransport(new URL("http://localhost:3000/api/mcp"), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    requestInit: { headers: token === null ? {} : { Authorization: `Bearer ${token}` } },
     fetch: async (input, init) => {
       const request = new Request(input, init);
       return request.method === "GET" ? GET() : request.method === "DELETE" ? DELETE() : POST(request);
@@ -220,10 +220,9 @@ describe("Kult MCP protocol and product workflows", () => {
 });
 
 describe("MCP credential and transport boundaries", () => {
-  it.each([undefined, "invalid"])("rejects missing/invalid keys even with a browser cookie", async (token) => {
-    const request = rpc("tools/list", undefined, token ?? "write-key");
+  it("rejects invalid keys even with a browser cookie", async () => {
+    const request = rpc("tools/list", undefined, "invalid");
     request.headers.set("Cookie", "__session=browser-session");
-    if (!token) request.headers.delete("authorization");
     const response = await POST(request);
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toContain("Bearer");
@@ -311,6 +310,47 @@ describe("browser-only credential management", () => {
 });
 
 describe("ChatGPT OAuth account connection", () => {
+  it("lets an anonymous SDK client initialize and discover all protected tools without accessing account data", async () => {
+    const client = await connect(null);
+    const tools = (await client.listTools()).tools;
+    expect(tools).toHaveLength(47);
+    expect(tools.some((tool) => tool.name === "create_campaign")).toBe(true);
+    expect(tools.every((tool) => (tool._meta?.securitySchemes as { type: string }[])[0].type === "oauth2")).toBe(true);
+    const response = await POST(rpc("tools/list", undefined, null));
+    const body = await response.json();
+    expect(body.result.tools.every((tool: { securitySchemes: { type: string }[] }) => tool.securitySchemes[0].type === "oauth2")).toBe(true);
+    expect((await client.readResource({ uri: "kult://guide" })).contents[0]).toHaveProperty("text");
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.oauthVerify).not.toHaveBeenCalled();
+    expect(mocks.membership).not.toHaveBeenCalled();
+    expect(mocks.user).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "get_workspace" }, { name: "get_connected_profile" },
+    { name: "list_campaign_templates" }, { name: "get_publishing_capabilities" },
+    { name: "list_instagram_accounts" }, { name: "connect_instagram" },
+    { name: "create_campaign", arguments: { body: campaignBody } },
+  ])("prompts anonymous callers to link OAuth before $name, including callers with browser cookies", async (params) => {
+    const request = rpc("tools/call", params, null);
+    request.headers.set("Cookie", "__session=browser-session");
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.structuredContent).toMatchObject({ status: 401 });
+    expect(body.result._meta["mcp/www_authenticate"]).toEqual([
+      expect.stringContaining('resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource/api/mcp"'),
+    ]);
+    expect(mocks.clerkAuth).not.toHaveBeenCalled();
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.oauthVerify).not.toHaveBeenCalled();
+    expect(mocks.membership).not.toHaveBeenCalled();
+    expect(mocks.user).not.toHaveBeenCalled();
+    expect(mocks.accounts).not.toHaveBeenCalled();
+    expect(mocks.createCampaign).not.toHaveBeenCalled();
+  });
+
   it("publishes public canonical resource discovery with browser-readable metadata", async () => {
     const root = await import("@/app/.well-known/oauth-protected-resource/route");
     const path = await import("@/app/.well-known/oauth-protected-resource/api/mcp/route");
@@ -322,9 +362,9 @@ describe("ChatGPT OAuth account connection", () => {
         authorization_servers: ["https://kult.clerk.accounts.dev"], scopes_supported: ["kult:read", "kult:write"] });
     }
     expect(root.OPTIONS().status).toBe(204);
-    const request = rpc("tools/list"); request.headers.delete("Authorization");
+    const request = rpc("tools/call", { name: "get_workspace" }, null);
     const response = await POST(request);
-    expect(response.headers.get("WWW-Authenticate")).toContain('resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource/api/mcp"');
+    expect((await response.json()).result._meta["mcp/www_authenticate"][0]).toContain('resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource/api/mcp"');
     expect(mocks.clerkAuth).not.toHaveBeenCalled();
   });
 
