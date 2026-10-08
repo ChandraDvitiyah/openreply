@@ -113,15 +113,25 @@ Configured through Clerk CLI on 9 October 2026:
   **Production** environment. The OAuth client secret is stored outside Git
   with restricted permissions, for entry only in ChatGPT's client settings.
 
-Provider and environment configuration is complete. The MCP source still needs
-an authorized web release, followed by ChatGPT installation and a real OAuth
-smoke check. Production environment changes apply to subsequent deployments.
-Validation: 278 tests passed, type checking, targeted lint checks and the
-production build passed. A local production server returned discovery metadata
-with the configured resource and issuer, an OAuth challenge for unauthenticated
-MCP requests, and the expected preflight response. The live discovery URL still
-returns 404; no production MCP rollout or real token exchange has been verified
-yet.
+The production MCP endpoint is live. Code commit
+`4ec6d242fa7b948d4b4758ef1774921b016080c8` is deployed by Vercel deployment
+`dpl_2fsvRFAWzVHhE3jPoBdp7anWoZRy` and serves `https://kultreply.vercel.app`.
+The Oracle checkout is at the same commit; its worker was restarted after
+installing the MCP dependency and regenerating Prisma. No migration was needed.
+
+Validation: 278 tests passed, type checking passed, and lint had zero errors
+with three existing warnings. The production build passed on Vercel. Both live
+resource discovery URLs return 200, metadata preflight returns 204, missing
+credentials return 401 with the OAuth challenge, and foreign Origins return
+403. A real SDK client connected with a temporary workspace credential, listed
+47 tools, and successfully read identity, accounts, scheduler, dashboard,
+templates, publishing capabilities and team membership. The test credential was
+revoked and subsequent requests rejected with 401 after Clerk propagated the
+revocation. Public application, database, queue and worker health are OK.
+
+The remaining user step is installing and linking Kult in ChatGPT. A real
+ChatGPT OAuth code exchange and refresh remain unverified until that step.
+Sign in with the existing Kult workspace account when granting consent.
 
 ## Other MCP clients (API keys)
 
@@ -234,7 +244,8 @@ after a network timeout.
   scopes alone never grant product writes. Media preview remains available to
   read-only keys.
 - Every HTTP request verifies its bearer credential with Clerk, rejecting revocation and
-  expiration. Every operation re-reads membership and current role from Turso.
+  expiration, subject to Clerk propagation of revocation. Every operation
+  re-reads membership and current role from Turso.
   Removing a member invalidates their workspace access; demoting a user changes
   their permissions without waiting for a key to expire.
 - Calls invoke the existing application handlers within an isolated server-only

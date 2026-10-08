@@ -853,8 +853,28 @@ Other clients can use Clerk's User API keys feature when enabled. See
 [MCP.md](MCP.md) for setup, permission boundaries and release smoke checks.
 MCP adds no database migration. It requires a web release; existing
 scheduler/worker/storage prerequisites still apply to publishing tools.
-Provider and environment configuration does not deploy source. The MCP web
-release, ChatGPT installation and live OAuth exchange remain unverified.
+MCP code release `4ec6d242fa7b948d4b4758ef1774921b016080c8` was pushed to
+`origin/main` and deployed on 9 October 2026 (Asia/Kolkata). Vercel deployment
+`dpl_2fsvRFAWzVHhE3jPoBdp7anWoZRy` is READY and serves both the canonical
+`https://kultreply.vercel.app` and the project alias. Oracle is at the same
+commit, dependencies installed and Prisma generated; its existing `kult-worker`
+was restarted and saved. No schema change or additional worker was required.
+
+The source passed 278 tests, typecheck and lint with zero errors (three existing
+warnings). Vercel's production build succeeded. Live discovery, preflight,
+OAuth challenge, foreign-Origin rejection and nine authenticated read operations
+passed; all 47 tools are available. Temporary test credentials were revoked,
+and revoked access was rejected after Clerk propagation. Health is OK and the
+queue has no waiting, active, delayed or failed jobs.
+
+A fresh Turso export was encrypted outside Git after restoration verified
+integrity and all 30 table counts. Existing application credentials, storage,
+encryption key and social callback settings were preserved. `.vercelignore`
+excludes local credentials, generated Prisma files, dependencies and build/data
+artifacts from CLI source uploads.
+
+ChatGPT installation and the user's OAuth consent/code exchange are the remaining
+user steps. They have not been performed or claimed as verified by this release.
 
 Before configuring the provider and Vercel, live health was checked and a
 consistent Turso export was restored locally to verify integrity and table
