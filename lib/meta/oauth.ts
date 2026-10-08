@@ -107,7 +107,19 @@ export async function exchangeCodeForToken(
     );
   }
 
-  const data = await response.json();
+  const responseData = await response.json();
+  const entries = responseData?.data;
+  const data = Array.isArray(entries) && entries.length === 1 && !responseData.access_token
+    ? entries[0]
+    : responseData;
+  if (typeof data?.access_token !== "string" || !data.access_token ||
+      !["string", "number"].includes(typeof data.user_id) || !String(data.user_id)) {
+    throw new Error("Instagram code exchange returned an invalid token response");
+  }
+  console.info("[Instagram OAuth] Code exchange completed", {
+    responseFormat: data === responseData ? "flat" : "wrapped",
+    tokenLength: data.access_token.length,
+  });
   return {
     accessToken: data.access_token,
     userId: String(data.user_id),

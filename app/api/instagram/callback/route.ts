@@ -41,20 +41,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${baseUrl}/settings?instagram=forbidden`);
   }
 
+  let stage = "code_exchange";
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
     const { accessToken: shortLivedToken } = await exchangeCodeForToken(
       code,
       redirectUri
     );
+    stage = "long_lived_token";
     const { accessToken: longLivedToken, expiresIn } =
       await getLongLivedToken(shortLivedToken);
+    stage = "profile";
     const userInfo = await getUserInfo(longLivedToken);
     // Webhooks and the messaging API key off the professional account ID
     // (user_id), not the app-scoped `id`. Store user_id so comment webhooks
     // can be matched back to this account. Fall back to id if user_id is
     // ever absent.
     const instagramId = userInfo.user_id ?? userInfo.id;
+    stage = "account_access";
     const connection = await canConnectInstagramAccount({
       workspaceId: state.workspaceId,
       instagramId,
@@ -66,6 +70,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    stage = "token_encryption";
     const encryptedToken = encryptToken(longLivedToken);
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
@@ -83,6 +88,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    stage = "account_save";
     await prisma.instagramAccount.upsert({
       where: { instagramId },
       create: {
@@ -106,7 +112,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(`${baseUrl}/settings?instagram=connected`);
   } catch (err) {
-    console.error("[Instagram Callback] Error:", err);
+    console.error(`[Instagram Callback] Error at ${stage}:`, err);
     return NextResponse.redirect(`${baseUrl}/settings?instagram=failed`);
   }
 }

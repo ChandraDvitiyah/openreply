@@ -594,8 +594,26 @@ export async function getLongLivedToken(
   url.searchParams.set("client_secret", requireEnv("INSTAGRAM_APP_SECRET"));
   url.searchParams.set("access_token", shortLivedToken);
 
-  const response = await fetch(url.toString());
-  const data = await handleResponse<TokenResponse>(response);
+  let data: TokenResponse;
+  try {
+    data = await handleResponse<TokenResponse>(await fetch(url.toString()));
+  } catch (error) {
+    if (!(error instanceof MetaApiError) || error.code !== 100 ||
+        error.message !== "Unsupported request - method type: get") {
+      throw error;
+    }
+    // Some Instagram login tokens reject the query-string GET exchange.
+    // Retry only that explicit method error, using the same token and endpoint.
+    data = await handleResponse<TokenResponse>(await fetch(`${INSTAGRAM_TOKEN_BASE}/access_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: url.searchParams.toString(),
+    }));
+  }
+
+  if (typeof data.access_token !== "string" || !data.access_token) {
+    throw new Error("Instagram long-lived exchange returned no access token");
+  }
 
   return {
     accessToken: data.access_token,

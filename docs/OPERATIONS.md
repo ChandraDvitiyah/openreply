@@ -914,5 +914,16 @@ commit and fresh worker heartbeat through Vercel and `/api/health`.
 A fresh Connect Instagram attempt is required for the user's real Meta
 consent/code exchange; local regression tests do not verify that external flow.
 
+Follow-up: the user's real connection still returned error 100 from the
+unversioned GET exchange, so the endpoint-path correction alone did not resolve
+the incident. The exchange now retries that exact unsupported-GET error once
+as a form-encoded POST; unrelated permission/invalid-token errors are not
+retried. Code-exchange responses are validated before use, including the
+single-account wrapped response shape. Callback failures name the processing
+stage, and successful code exchanges log only response format/token length.
+No token, authorization code, or secret is added to diagnostics. Follow-up
+validation passed 295 tests, typecheck, lint (the same three warnings), and
+production build. Actual connection success still requires live verification.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.

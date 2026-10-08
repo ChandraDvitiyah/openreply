@@ -57,4 +57,34 @@ describe("Instagram token lifecycle endpoints", () => {
     }, { status: 400 })));
     await expect(getLongLivedToken("expired-token")).rejects.toThrow("Invalid access token");
   });
+
+  it("retries Meta's explicit unsupported GET error as a form POST", async () => {
+    vi.stubEnv("INSTAGRAM_APP_SECRET", "test-secret");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: { code: 100, message: "Unsupported request - method type: get" } }, { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ access_token: "long-token", expires_in: 5184000 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await getLongLivedToken("short-token")).toEqual({ accessToken: "long-token", expiresIn: 5184000 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [url, options] = fetchMock.mock.calls[1];
+    expect(url).toBe("https://graph.instagram.com/access_token");
+    expect(options).toMatchObject({ method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+    expect(Object.fromEntries(new URLSearchParams(String(options?.body)))).toEqual({
+      grant_type: "ig_exchange_token", client_secret: "test-secret", access_token: "short-token",
+    });
+  });
+
+  it("does not retry unrelated permissions failures", async () => {
+    vi.stubEnv("INSTAGRAM_APP_SECRET", "test-secret");
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ error: { code: 100, message: "Missing permission" } }, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getLongLivedToken("short-token")).rejects.toThrow("Missing permission");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an exchange response without a usable token", async () => {
+    vi.stubEnv("INSTAGRAM_APP_SECRET", "test-secret");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ expires_in: 5184000 })));
+    await expect(getLongLivedToken("short-token")).rejects.toThrow("returned no access token");
+  });
 });

@@ -24,6 +24,7 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue({ user: { id: "user-1" } });
   mocks.membership.mockResolvedValue({ role: "OWNER" });
   mocks.canConnect.mockResolvedValue({ allowed: true });
+  vi.spyOn(console, "info").mockImplementation(() => {});
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,7 +40,7 @@ function callbackRequest() {
 }
 
 describe("Instagram connection callback", () => {
-  it("completes Meta consent, saves the encrypted token, and shows the connected account in Settings", async () => {
+  it.each(["GET", "POST"])("completes Meta consent with a %s exchange and saves the encrypted account", async (exchangeMethod) => {
     const fetchMock = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
       const url = new URL(String(input));
       if (url.href === "https://api.instagram.com/oauth/access_token") {
@@ -49,6 +50,9 @@ describe("Instagram connection callback", () => {
         return Response.json({ access_token: "short-token", user_id: "ig-1" });
       }
       if (url.origin + url.pathname === "https://graph.instagram.com/access_token") {
+        if (exchangeMethod === "POST" && options?.method !== "POST") {
+          return Response.json({ error: { code: 100, message: "Unsupported request - method type: get" } }, { status: 400 });
+        }
         return Response.json({ access_token: "long-token", expires_in: 5184000 });
       }
       if (url.pathname === "/v25.0/me") {
@@ -76,7 +80,7 @@ describe("Instagram connection callback", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(Response.json({ access_token: "short-token", user_id: "ig-1" }))
-      .mockResolvedValueOnce(Response.json({ error: { code: 100, message: "Unsupported request - method type: get" } }, { status: 400 })));
+      .mockResolvedValueOnce(Response.json({ error: { code: 190, message: "Invalid access token" } }, { status: 400 })));
     const response = await GET(callbackRequest());
     expect(response.headers.get("location")).toBe("https://kult.example/settings?instagram=failed");
     expect(mocks.upsert).not.toHaveBeenCalled();
