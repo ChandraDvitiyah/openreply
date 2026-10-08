@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { AccountOption } from "@/components/account-select";
 import { FormLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 import { useDashboardDataCache } from "@/components/dashboard-data-cache";
@@ -65,6 +66,35 @@ type SettingsPageCache = {
   facebookPages: FacebookPageData[];
   profile: UserProfileData | null;
 };
+
+const connectionMessages: Record<string, string> = {
+  connected: "Account connected successfully.",
+  denied: "Connection was cancelled in Meta. Try again when you are ready.",
+  invalid: "This connection attempt expired or is invalid. Start again using the connect button below.",
+  forbidden: "Only workspace owners and admins can connect accounts.",
+  already_connected: "This Instagram account is connected to another workspace.",
+  no_pages: "Meta did not return any Facebook Pages. Check your Page access and select the Pages to connect.",
+  failed: "Meta granted access, but Kult could not finish connecting the account. Please try again. If it still fails, contact support.",
+};
+
+function ConnectionNotice() {
+  const params = useSearchParams();
+  for (const platform of ["instagram", "facebook"]) {
+    const status = params.get(platform);
+    const message = status && Object.hasOwn(connectionMessages, status) ? connectionMessages[status] : null;
+    if (!message) continue;
+    return (
+      <div
+        role={status === "connected" ? "status" : "alert"}
+        className={`panel rounded p-4 text-sm ${status === "connected" ? "text-success" : "text-error"}`}
+      >
+        <p className="mb-1 font-semibold">{platform === "instagram" ? "Instagram" : "Facebook"} connection</p>
+        <p>{message}</p>
+      </div>
+    );
+  }
+  return null;
+}
 
 export default function SettingsPage() {
   const dataCache = useDashboardDataCache();
@@ -203,6 +233,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
+      <Suspense fallback={null}><ConnectionNotice /></Suspense>
       <section className="panel rounded p-6">
         <h2 className="mb-1 text-base font-semibold">Your profile</h2>
         <p className="mb-6 text-xs text-muted">

@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    return NextResponse.redirect(`${baseUrl}/dashboard?connected=true`);
+    return NextResponse.redirect(`${baseUrl}/settings?instagram=connected`);
   } catch (err) {
     console.error("[Instagram Callback] Error:", err);
     return NextResponse.redirect(`${baseUrl}/settings?instagram=failed`);
