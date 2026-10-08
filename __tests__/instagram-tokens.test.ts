@@ -4,6 +4,7 @@ import { getLongLivedToken, getUserInfo, refreshLongLivedToken } from "@/lib/met
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("Instagram token lifecycle endpoints", () => {
@@ -86,5 +87,25 @@ describe("Instagram token lifecycle endpoints", () => {
     vi.stubEnv("INSTAGRAM_APP_SECRET", "test-secret");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ expires_in: 5184000 })));
     await expect(getLongLivedToken("short-token")).rejects.toThrow("returned no access token");
+  });
+
+  it("diagnoses a failed exchange without logging token or identity values", async () => {
+    vi.stubEnv("INSTAGRAM_APP_SECRET", "instagram-secret");
+    vi.stubEnv("FACEBOOK_APP_ID", "facebook-app");
+    vi.stubEnv("FACEBOOK_APP_SECRET", "facebook-secret");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: { code: 100, message: "Unsupported request - method type: get" } }, { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ error: { code: 100, message: "Unsupported request - method type: post" } }, { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ id: "private-user", username: "private-name" }))
+      .mockResolvedValueOnce(Response.json({ data: { app_id: "issued-app", type: "USER", is_valid: true, scopes: ["instagram_business_basic"], user_id: "private-user" } })));
+    await expect(getLongLivedToken("private-token")).rejects.toThrow("Unsupported request - method type: post");
+    expect(log).toHaveBeenCalledWith("[Instagram OAuth] Exchange diagnostic", {
+      profileAccessible: true, issuedAppId: "issued-app", tokenType: "USER", tokenValid: true, scopeCount: 1,
+    });
+    const logged = JSON.stringify(log.mock.calls);
+    for (const value of ["private-token", "private-user", "private-name", "instagram-secret", "facebook-secret"]) {
+      expect(logged).not.toContain(value);
+    }
   });
 });

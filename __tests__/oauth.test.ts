@@ -53,7 +53,7 @@ describe("Instagram authorization-code response", () => {
     expect(await exchangeCodeForToken("code", "https://kult.example/api/instagram/callback"))
       .toEqual({ accessToken: "short-token", userId: "123" });
     expect(console.info).toHaveBeenCalledWith("[Instagram OAuth] Code exchange completed", {
-      responseFormat: "data" in body ? "wrapped" : "flat", tokenLength: 11,
+      responseFormat: "data" in body ? "wrapped" : "flat", tokenLength: 11, tokenKind: "other",
     });
   });
 

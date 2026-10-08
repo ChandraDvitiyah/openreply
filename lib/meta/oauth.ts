@@ -119,6 +119,9 @@ export async function exchangeCodeForToken(
   console.info("[Instagram OAuth] Code exchange completed", {
     responseFormat: data === responseData ? "flat" : "wrapped",
     tokenLength: data.access_token.length,
+    tokenKind: data.access_token.startsWith("IGAA") ? "instagram_business" :
+      data.access_token.startsWith("IGQ") ? "instagram_legacy" :
+      data.access_token.startsWith("EAA") ? "facebook" : "other",
   });
   return {
     accessToken: data.access_token,

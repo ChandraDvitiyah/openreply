@@ -602,13 +602,41 @@ export async function getLongLivedToken(
         error.message !== "Unsupported request - method type: get") {
       throw error;
     }
-    // Some Instagram login tokens reject the query-string GET exchange.
-    // Retry only that explicit method error, using the same token and endpoint.
-    data = await handleResponse<TokenResponse>(await fetch(`${INSTAGRAM_TOKEN_BASE}/access_token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: url.searchParams.toString(),
-    }));
+    try {
+      data = await handleResponse<TokenResponse>(await fetch(`${INSTAGRAM_TOKEN_BASE}/access_token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: url.searchParams.toString(),
+      }));
+    } catch (postError) {
+      // Diagnose the issued token using read-only API calls. Keep token values,
+      // codes, user IDs and app secrets out of the log.
+      const diagnostic: Record<string, unknown> = {};
+      try {
+        await getUserInfo(shortLivedToken);
+        diagnostic.profileAccessible = true;
+      } catch (profileError) {
+        diagnostic.profileAccessible = false;
+        if (profileError instanceof MetaApiError) {
+          diagnostic.profileErrorCode = profileError.code;
+          diagnostic.profileTraceId = profileError.fbTraceId;
+        }
+      }
+      try {
+        const result = await debugToken(shortLivedToken,
+          `${requireEnv("FACEBOOK_APP_ID")}|${requireEnv("FACEBOOK_APP_SECRET")}`) as {
+            data?: { app_id?: string; type?: string; is_valid?: boolean; scopes?: string[] };
+          };
+        diagnostic.issuedAppId = result.data?.app_id;
+        diagnostic.tokenType = result.data?.type;
+        diagnostic.tokenValid = result.data?.is_valid;
+        diagnostic.scopeCount = result.data?.scopes?.length;
+      } catch (debugError) {
+        if (debugError instanceof MetaApiError) diagnostic.debugErrorCode = debugError.code;
+      }
+      console.error("[Instagram OAuth] Exchange diagnostic", diagnostic);
+      throw postError;
+    }
   }
 
   if (typeof data.access_token !== "string" || !data.access_token) {

@@ -925,5 +925,16 @@ No token, authorization code, or secret is added to diagnostics. Follow-up
 validation passed 295 tests, typecheck, lint (the same three warnings), and
 production build. Actual connection success still requires live verification.
 
+The follow-up was reproduced through the owner's existing Instagram consent
+for `alexgott.creates`: code exchange returned a flat response with a 213-byte
+token, but both GET and POST long-lived exchanges failed with error 100. The
+retry is therefore not a verified resolution. Failure diagnostics now test the
+short-lived token's profile access and introspect its issuing app using the
+existing Facebook app credential, logging only accessibility, validation, app
+ID, token type, scope count and trace IDs. The authorization code, token,
+profile identity and secrets stay out of diagnostics. Validation passed 296
+tests, typecheck, lint and production build. Compare the actual OAuth token
+with the owner's working Meta API token before changing provider settings.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.
