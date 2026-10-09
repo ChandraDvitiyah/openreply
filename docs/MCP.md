@@ -1,6 +1,6 @@
 # Kult for AI agents
 
-Kult exposes its product features through 49 tools on a remote MCP server at `/api/mcp`.
+Kult exposes its product features through 52 tools on a remote MCP server at `/api/mcp`.
 The server uses the official MCP TypeScript SDK with stateless Streamable HTTP
 and JSON responses. It works across Vercel instances without an in-memory
 session store or another server process.
@@ -272,8 +272,26 @@ is needed. Files retain their original bytes and must meet the existing
 platform format and size limits; Instagram images require JPEG.
 
 Other clients can call `upload_media_bytes` with standard base64 and a MIME
-type for up to 3,000,000 decoded bytes. Larger attachments use the streaming
-file tool, avoiding Vercel's request-body limit. Transfers have a four-minute
+type for up to 3,300,000 decoded bytes per call. For larger actual-byte files:
+
+1. Call `begin_media_byte_upload` with platform, kind, MIME type, total size,
+   a stable `clientRequestId` UUID and optionally the original SHA-256.
+2. Send `upload_media_bytes` calls with the same platform/kind/MIME type,
+   returned `uploadId`, `offset: nextOffset` and exactly `nextChunkBytes`
+   decoded bytes. Retry an accepted chunk only with identical bytes.
+3. Call `complete_media_byte_upload` to verify and assemble the ready media
+   reference. Retrying completion returns the same result.
+
+Uploads persist across requests and instances. Call begin with the same UUID
+to resume after a timeout; sessions expire after two hours. Use
+`abort_media_byte_upload` to cancel. Temporary chunk objects are registered
+for automatic cleanup before storage writes, including abandoned uploads.
+Final files preserve their original bytes. Existing platform limits apply:
+Facebook videos up to 1 GiB; Instagram Reels up to 300 MiB, video stories
+100 MiB, Instagram JPEGs 8 MiB, and Facebook images 10 MiB.
+
+ChatGPT attachments still use the one-call streaming file tool, avoiding
+Vercel's request-body limit. Transfers have a four-minute
 deadline, and failed multipart uploads are aborted. Both upload tools require
 write access and current workspace membership. Native attachment discovery
 follows [OpenAI's file API contract](https://developers.openai.com/plugins/reference#file-apis).

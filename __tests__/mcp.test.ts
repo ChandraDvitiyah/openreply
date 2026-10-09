@@ -129,7 +129,7 @@ describe("Kult MCP protocol and product workflows", () => {
   it("initializes a real SDK client, lists typed tools, and reads workflow resources", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(AGENT_TOOLS.length + 6);
+    expect(tools.length).toBe(AGENT_TOOLS.length + 9);
     expect(tools.find((t) => t.name === "create_campaign")?.inputSchema.properties).toHaveProperty("body");
     const schema = tools.find((t) => t.name === "create_scheduled_post")?.inputSchema;
     expect(JSON.stringify(schema)).toContain("clientRequestId");
@@ -243,7 +243,7 @@ describe("MCP credential and transport boundaries", () => {
         const response = await POST(request);
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("application/json");
-        expect((await response.json()).result.tools).toHaveLength(49);
+        expect((await response.json()).result.tools).toHaveLength(52);
       }
     });
 
@@ -317,7 +317,7 @@ describe("MCP credential and transport boundaries", () => {
   });
 
   it("limits payload size before parsing", async () => {
-    const request = rpc("tools/list"); request.headers.set("Content-Length", String(4 * 1024 * 1024 + 1));
+    const request = rpc("tools/list"); request.headers.set("Content-Length", String(4_450_000 + 1));
     expect((await POST(request)).status).toBe(413);
   });
 });
@@ -381,7 +381,7 @@ describe("ChatGPT OAuth account connection", () => {
   });
 
   it("stores actual bytes from a JSON MCP request over 1 MB in the authenticated workspace", async () => {
-    const bytes = Buffer.concat([Buffer.from([255, 216, 255]), Buffer.alloc(2 * 1024 ** 2, 123)]);
+    const bytes = Buffer.concat([Buffer.from([255, 216, 255]), Buffer.alloc(3_300_000 - 3, 123)]);
     const args = { platform: "INSTAGRAM", kind: "IMAGE", contentType: "image/jpeg", dataBase64: bytes.toString("base64") };
     const request = rpc("tools/call", { name: "upload_media_bytes", arguments: args });
     request.headers.set("Accept", "application/json");
@@ -408,7 +408,7 @@ describe("ChatGPT OAuth account connection", () => {
   it("lets an anonymous SDK client initialize and discover all protected tools without accessing account data", async () => {
     const client = await connect(null);
     const tools = (await client.listTools()).tools;
-    expect(tools).toHaveLength(49);
+    expect(tools).toHaveLength(52);
     expect(tools.some((tool) => tool.name === "create_campaign")).toBe(true);
     expect(tools.every((tool) => (tool._meta?.securitySchemes as { type: string }[])[0].type === "oauth2")).toBe(true);
     const response = await POST(rpc("tools/list", undefined, null));
@@ -426,6 +426,9 @@ describe("ChatGPT OAuth account connection", () => {
     { name: "list_campaign_templates" }, { name: "get_publishing_capabilities" },
     { name: "list_instagram_accounts" }, { name: "connect_instagram" },
     { name: "create_campaign", arguments: { body: campaignBody } },
+    { name: "begin_media_byte_upload", arguments: { platform: "FACEBOOK", kind: "VIDEO", contentType: "video/mp4", size: 10_000_000 } },
+    { name: "complete_media_byte_upload", arguments: { uploadId: "00000000-0000-4000-8000-000000000001" } },
+    { name: "abort_media_byte_upload", arguments: { uploadId: "00000000-0000-4000-8000-000000000001" } },
   ])("prompts anonymous callers to link OAuth before $name, including callers with browser cookies", async (params) => {
     const request = rpc("tools/call", params, null);
     request.headers.set("Cookie", "__session=browser-session");
@@ -550,7 +553,7 @@ describe("ChatGPT OAuth account connection", () => {
       expiration: now + 86400 });
     const token = jwt();
     const client = await connect(token);
-    expect((await client.listTools()).tools).toHaveLength(49);
+    expect((await client.listTools()).tools).toHaveLength(52);
     expect((await client.callTool({ name: "get_connected_profile" })).structuredContent).toMatchObject({ id: "user_one" });
     expect((await client.callTool({ name: "get_workspace" })).structuredContent).toMatchObject({ scopes: ["kult:read", "kult:write"] });
     // The same provider response expires at the Unix-second boundary even if

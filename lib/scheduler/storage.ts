@@ -279,11 +279,15 @@ export async function schedulerStorageBucketName() {
 export async function storeSchedulerMedia(
   workspaceId: string, contentType: string, source: AsyncIterable<Uint8Array>,
   limit: number, signal: AbortSignal, expectedSize?: number,
+  options: { objectId?: string; beforeUpload?: (url: string) => Promise<void> } = {},
 ) {
   if (!/^[a-zA-Z0-9_-]+$/.test(workspaceId) || !extensions[contentType])
     throw new StorageError("Invalid upload metadata.");
   const { client, bucketName, downloadUrl } = await connection();
-  const key = `scheduler/${workspaceId}/${randomUUID()}.${extensions[contentType]}`;
+  const objectId = options.objectId ?? randomUUID();
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(objectId))
+    throw new StorageError("Invalid upload identifier.");
+  const key = `scheduler/${workspaceId}/${objectId}.${extensions[contentType]}`;
   const hash = createHash("sha256");
   const partSize = 8 * 1024 ** 2;
   const parts: { PartNumber: number; ETag: string }[] = [];
@@ -308,6 +312,7 @@ export async function storeSchedulerMedia(
     parts.push({ PartNumber, ETag: uploaded.ETag });
   }
   try {
+    await options.beforeUpload?.(`${downloadUrl}/file/${bucketName}/${key}`);
     for await (const chunk of source) {
       signal.throwIfAborted();
       size += chunk.byteLength;

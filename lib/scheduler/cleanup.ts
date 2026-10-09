@@ -21,6 +21,10 @@ export async function runMediaCleanupTick(
     ? process.env.B2_BUCKET_NAME
     : await schedulerStorageBucketName();
   const now = new Date();
+  // Chunk cleanup jobs are registered before writes and survive session expiry.
+  await db.agentMediaUpload.deleteMany({ where: {
+    expiresAt: { lt: new Date(now.getTime() - 24 * 60 * 60_000) },
+  } });
   const published = await db.scheduledPost.findMany({
     where: {
       status: "PUBLISHED",

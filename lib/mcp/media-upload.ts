@@ -7,7 +7,8 @@ import { postKinds, supportedKinds, type PostKind } from "@/lib/scheduler/capabi
 import { uploadSizeLimit, validateUpload } from "@/lib/scheduler/media-files";
 import { storeSchedulerMedia } from "@/lib/scheduler/storage";
 
-export const MAX_INLINE_MEDIA_BYTES = 3_000_000;
+export const MAX_INLINE_MEDIA_BYTES = 3_300_000;
+export const MAX_MCP_REQUEST_BYTES = 4_450_000;
 export class MediaUploadError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -25,7 +26,8 @@ export const attachmentInput = {
 export const bytesInput = {
   platform, kind, contentType: z.string().max(100),
   dataBase64: z.string().min(1).max(4 * Math.ceil(MAX_INLINE_MEDIA_BYTES / 3))
-    .describe("Actual file bytes encoded as standard base64, without a data URL prefix. Maximum 3,000,000 decoded bytes. For larger ChatGPT attachments use upload_media_file."),
+    .describe("Actual file bytes encoded as standard base64, without a data URL prefix. Maximum 3,300,000 decoded bytes per call. For larger files begin a byte upload and supply uploadId and offset, or use upload_media_file for ChatGPT attachments."),
+  uploadId: z.uuid().optional(), offset: z.number().int().nonnegative().optional(),
 };
 export const uploadOutput = {
   status: z.literal(200), uploaded: z.literal(true), mediaUrl: z.url(),
@@ -108,26 +110,32 @@ function detectedType(bytes: Buffer): string | undefined {
   }
   if (bytes.length >= 8 && ["moov", "mdat", "wide"].includes(bytes.subarray(4, 8).toString())) return "video/quicktime";
 }
-function checkFormat(bytes: Buffer, claimed?: string) {
+export function checkFormat(bytes: Buffer, claimed?: string) {
   const detected = detectedType(bytes);
   const type = claimed?.split(";")[0].trim().toLowerCase();
   if (!detected || (type && type !== "application/octet-stream" && type !== detected))
     throw new MediaUploadError("The file bytes do not match a supported image or MP4/MOV format. Kult does not convert files.");
   return detected;
 }
-function validate(platform: string, kind: PostKind, contentType: string, size: number) {
+export function validate(platform: string, kind: PostKind, contentType: string, size: number) {
   try {
     if (kind === "TEXT" || !supportedKinds(platform).includes(kind)) throw new Error("Choose a supported media post type.");
     validateUpload({ type: contentType, size }, platform, kind);
   } catch (error) { throw new MediaUploadError(error instanceof Error ? error.message : "Invalid media upload."); }
 }
-export async function uploadMediaBytes(workspaceId: string, args: z.infer<z.ZodObject<typeof bytesInput>>) {
+export function decodeMediaBytes(dataBase64: string) {
   // Buffer.from alone silently accepts malformed and truncated base64.
-  if (args.dataBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(args.dataBase64))
+  if (dataBase64.length > 4 * Math.ceil(MAX_INLINE_MEDIA_BYTES / 3) || dataBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64))
     throw new MediaUploadError("Provide valid standard base64 file bytes without a data URL prefix.");
-  const bytes = Buffer.from(args.dataBase64, "base64");
-  if (!bytes.length || bytes.toString("base64") !== args.dataBase64) throw new MediaUploadError("Invalid base64 file bytes.");
-  if (bytes.length > MAX_INLINE_MEDIA_BYTES) throw new MediaUploadError("Use upload_media_file for files larger than 3,000,000 bytes.", 413);
+  const bytes = Buffer.from(dataBase64, "base64");
+  if (!bytes.length || bytes.toString("base64") !== dataBase64) throw new MediaUploadError("Invalid base64 file bytes.");
+  if (bytes.length > MAX_INLINE_MEDIA_BYTES) throw new MediaUploadError("Use a resumable byte upload or upload_media_file for files larger than 3,300,000 bytes.", 413);
+  return bytes;
+}
+export async function uploadMediaBytes(workspaceId: string, args: z.infer<z.ZodObject<typeof bytesInput>>) {
+  if (args.uploadId !== undefined || args.offset !== undefined)
+    throw new MediaUploadError("Resumable chunks require the authenticated byte-upload dispatcher.");
+  const bytes = decodeMediaBytes(args.dataBase64);
   const contentType = checkFormat(bytes.subarray(0, 512), args.contentType);
   validate(args.platform, args.kind, contentType, bytes.length);
   async function* source() { yield bytes; }

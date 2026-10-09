@@ -11,6 +11,8 @@ import { supportedKinds } from "@/lib/scheduler/capabilities";
 import { StorageError } from "@/lib/scheduler/storage";
 import { attachmentInput, bytesInput, uploadOutput, uploadMediaAttachment,
   uploadMediaBytes, MediaUploadError, MAX_INLINE_MEDIA_BYTES } from "./media-upload";
+import { beginBytesInput, bytesOutput, sessionInput, beginByteUpload, appendByteUpload,
+  completeByteUpload, abortByteUpload } from "./byte-upload";
 
 export const AGENT_GUIDE = `Kult agent workflows
 You act as the credential's user in one workspace. Existing workspace roles and
@@ -25,7 +27,14 @@ matching, next/future reel targeting, tracked links and report sharing) are in
 the create/update schemas. CSV imports use structured rows in import_campaigns.
 Publishing: use upload_media_file for a ChatGPT attachment. Kult downloads and
 stores its actual bytes in your workspace and returns mediaUrl ready for a post.
-Use upload_media_bytes for available base64 bytes (up to 3,000,000 decoded bytes).
+Use upload_media_bytes for available base64 bytes (up to 3,300,000 bytes per call).
+Larger actual byte files: begin_media_byte_upload with metadata/total size and
+a stable clientRequestId, then upload_media_bytes with uploadId and nextOffset.
+Each chunk must contain exactly nextChunkBytes. Retrying identical chunks is safe.
+complete_media_byte_upload assembles and verifies the file, returning mediaUrl.
+Use begin with the same clientRequestId to resume. abort_media_byte_upload cancels.
+Sessions last two hours. Original platform limits apply, up to 1 GiB for Facebook
+videos. Never fabricate bytes. ChatGPT attachments still use upload_media_file.
 For other clients with large local files, prepare_media_upload returns a signed
 PUT URL. Upload bytes with its headers. Never publish before upload succeeds.
 Use a stable UUID clientRequestId for retried create_scheduled_post calls.
@@ -111,10 +120,27 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
     }, true), async (args) => withAccess(true, async (_identity, context) =>
       result({ status: 200, ...await uploadMediaAttachment(context.workspaceId, args) })));
     server.registerTool("upload_media_bytes", describe("upload_media_bytes", {
-      description: "Upload actual image/video bytes encoded as base64 directly into Kult storage and return a ready mediaUrl and SHA-256. Maximum 3,000,000 decoded bytes. Use only bytes you actually have; never invent base64. For ChatGPT attachments or larger files use upload_media_file, which transfers bytes automatically.",
-      inputSchema: bytesInput, outputSchema: uploadOutput, annotations,
-    }, true), async (args) => withAccess(true, async (_identity, context) =>
-      result({ status: 200, ...await uploadMediaBytes(context.workspaceId, args) })));
+      description: "Upload actual base64 image/video bytes directly into Kult storage: up to 3,300,000 decoded bytes per call. For larger files first use begin_media_byte_upload, then pass uploadId and offset=nextOffset with exactly nextChunkBytes. Returns uploaded=false until complete_media_byte_upload assembles the ready mediaUrl. Repeat metadata for each chunk. Never invent bytes. Prefer upload_media_file for ChatGPT attachments.",
+      inputSchema: bytesInput, outputSchema: bytesOutput, annotations,
+    }, true), async (args) => withAccess(true, async (identity, context) =>
+      result({ status: 200, ...(args.uploadId !== undefined || args.offset !== undefined
+        ? await appendByteUpload({ workspaceId: context.workspaceId, userId: identity.userId }, args)
+        : await uploadMediaBytes(context.workspaceId, args)) })));
+    server.registerTool("begin_media_byte_upload", describe("begin_media_byte_upload", {
+      description: "Begin or resume a large actual-byte upload. Provide the complete file size and platform metadata; optionally its SHA-256. Platform limits apply, up to 1 GiB for Facebook videos. Reuse clientRequestId after a timeout. Send chunks via upload_media_bytes at nextOffset, then complete_media_byte_upload. Sessions expire after two hours and abandoned chunks are cleaned up automatically.",
+      inputSchema: beginBytesInput, annotations,
+    }, true), async (args) => withAccess(true, async (identity, context) => result({ status: 200,
+      ...await beginByteUpload({ workspaceId: context.workspaceId, userId: identity.userId }, args) })));
+    server.registerTool("complete_media_byte_upload", describe("complete_media_byte_upload", {
+      description: "Finish a fully received byte upload, joining its ordered chunks in storage and verifying byte size, every chunk checksum, and optional original SHA-256. Returns uploaded=true and a ready mediaUrl. Safe to retry after completion. No manual PUT or storage login is required.",
+      inputSchema: sessionInput, outputSchema: uploadOutput, annotations: { ...annotations, idempotentHint: true },
+    }, true), async (args) => withAccess(true, async (identity, context) => result({ status: 200,
+      ...await completeByteUpload({ workspaceId: context.workspaceId, userId: identity.userId }, args.uploadId) })));
+    server.registerTool("abort_media_byte_upload", describe("abort_media_byte_upload", {
+      description: "Cancel an incomplete byte upload and queue its temporary chunks for automatic deletion. Completed media remains available; completed uploads cannot be aborted.",
+      inputSchema: sessionInput, annotations: { ...annotations, destructiveHint: true, idempotentHint: true },
+    }, true), async (args) => withAccess(true, async (identity, context) => result({ status: 200,
+      ...await abortByteUpload({ workspaceId: context.workspaceId, userId: identity.userId }, args.uploadId) })));
   }
   server.registerTool("get_workspace", describe("get_workspace", { description: "Read the credential's workspace, current role, and allowed scopes.", inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async (identity, context) => {
@@ -126,7 +152,8 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
     annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async () => result({
     instagram: supportedKinds("INSTAGRAM"), facebook: supportedKinds("FACEBOOK"),
     delivery: "asynchronous", media: "Public HTTPS URLs or workspace uploads; Instagram images must be JPEG.",
-    uploads: { chatgptAttachments: "upload_media_file", inlineBytes: "upload_media_bytes", maxInlineBytes: MAX_INLINE_MEDIA_BYTES },
+    uploads: { chatgptAttachments: "upload_media_file", inlineBytes: "upload_media_bytes", maxInlineBytes: MAX_INLINE_MEDIA_BYTES,
+      largeByteUploads: "begin_media_byte_upload", completeByteUpload: "complete_media_byte_upload", maxFileBytes: 1024 ** 3 },
   })));
   const profileSchema = { id: z.string().min(1).regex(/\S/), name: z.string().optional(),
     email: z.string().optional(), nickname: z.string().optional() };

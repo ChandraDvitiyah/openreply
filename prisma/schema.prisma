@@ -90,6 +90,7 @@ model Workspace {
   operationalEvents OperationalEvent[]
   scheduledPosts    ScheduledPost[]
   scheduledMediaCleanup ScheduledMediaCleanup[]
+  agentMediaUploads AgentMediaUpload[]
 
   @@index([ownerId])
 }
@@ -629,6 +630,31 @@ enum ScheduledPostKind {
   CAROUSEL
   STORY_IMAGE
   STORY_VIDEO
+}
+
+model AgentMediaUpload {
+  id String @id
+  objectId String @default(uuid())
+  workspaceId String
+  userId String
+  platform String
+  kind String
+  contentType String
+  size Int
+  expectedSha256 String?
+  parts String @default("[]")
+  nextOffset Int @default(0)
+  state String @default("OPEN")
+  leaseOwner String?
+  leaseExpiresAt DateTime?
+  mediaUrl String?
+  sha256 String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, userId])
+  @@index([expiresAt])
 }
 
 model ScheduledMediaCleanup {

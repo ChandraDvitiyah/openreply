@@ -3,6 +3,7 @@ import { authenticateAgent, AgentAuthError } from "@/lib/mcp/auth";
 import { createAgentServer } from "@/lib/mcp/server";
 import { authChallenge } from "@/lib/mcp/oauth";
 import { getBaseUrl } from "@/lib/env";
+import { MAX_MCP_REQUEST_BYTES } from "@/lib/mcp/media-upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     const transportRequest = new Request(request, { headers });
     const server = createAgentServer(identity, getBaseUrl());
     const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: 4 * 1024 * 1024,
+      sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: MAX_MCP_REQUEST_BYTES,
     });
     try {
       await server.connect(transport);
