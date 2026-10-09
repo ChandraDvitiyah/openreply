@@ -67,7 +67,7 @@ beforeEach(() => {
   vi.stubEnv("INSTAGRAM_APP_ID", "123"); vi.stubEnv("FACEBOOK_APP_ID", "456"); vi.stubEnv("FACEBOOK_APP_SECRET", "test-only");
   vi.stubEnv("ENCRYPTION_KEY", "a".repeat(64));
   mocks.oauthVerify.mockResolvedValue({ clientId: "chatgpt_kult", type: "oauth_token", subject: "user_one",
-    scopes: ["kult:read", "kult:write"], revoked: false, expired: false, expiration: Date.now() + 86400000 });
+    scopes: ["kult:read", "kult:write"], revoked: false, expired: false, expiration: Math.floor(Date.now() / 1000) + 86400 });
   mocks.clerkAuth.mockResolvedValue({ userId: "user_one" });
   mocks.verify.mockImplementation(async (secret: string) => {
     if (secret === "invalid") throw { status: 404 };
@@ -450,7 +450,8 @@ describe("ChatGPT OAuth account connection", () => {
   });
 
   it.each([{ clientId: "another_app" }, { subject: "org_other" }, { revoked: true }, { expired: true },
-    { expiration: Date.now() - 1000 }, { expiration: null }, { expiration: undefined }])("rejects invalid OAuth properties %j", async (properties) => {
+    { expiration: Math.floor(Date.now() / 1000) - 1 }, { expiration: null }, { expiration: undefined },
+    { expiration: NaN }, { expiration: Infinity }])("rejects invalid OAuth properties %j", async (properties) => {
     const good = await mocks.oauthVerify();
     mocks.oauthVerify.mockResolvedValue({ ...good, ...properties });
     expect((await POST(rpc("tools/list", undefined, "oat_invalid"))).status).toBe(401);
@@ -493,6 +494,24 @@ describe("ChatGPT OAuth account connection", () => {
       ...properties,
     })).toString("base64url")}.provider-verified-signature`;
   }
+  it("accepts Clerk's OAuth Unix-second expiry through initialization, tool discovery and profile calls", async () => {
+    vi.stubEnv("MCP_OAUTH_SCOPE_MODE", "clerk");
+    vi.stubEnv("MCP_OAUTH_WRITE_ENABLED", "true");
+    const now = Math.floor(Date.now() / 1000);
+    mocks.oauthVerify.mockResolvedValue({ clientId: "chatgpt_kult", subject: "user_one",
+      scopes: ["openid", "profile", "email", "offline_access"], revoked: false, expired: false,
+      expiration: now + 86400 });
+    const token = jwt();
+    const client = await connect(token);
+    expect((await client.listTools()).tools).toHaveLength(47);
+    expect((await client.callTool({ name: "get_connected_profile" })).structuredContent).toMatchObject({ id: "user_one" });
+    expect((await client.callTool({ name: "get_workspace" })).structuredContent).toMatchObject({ scopes: ["kult:read", "kult:write"] });
+    // The same provider response expires at the Unix-second boundary even if
+    // Clerk's expired flag has not caught up. JWT exp is independently checked.
+    mocks.oauthVerify.mockResolvedValue({ clientId: "chatgpt_kult", subject: "user_one",
+      scopes: ["profile", "email"], revoked: false, expired: false, expiration: now });
+    expect((await POST(rpc("tools/list", undefined, token))).status).toBe(401);
+  });
   it("requires trusted introspection before using JWT claims and accepts the bound resource", async () => {
     expect((await POST(rpc("tools/list", undefined, jwt()))).status).toBe(200);
     mocks.oauthVerify.mockRejectedValue({ status: 401 });

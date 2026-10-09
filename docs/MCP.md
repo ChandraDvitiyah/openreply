@@ -24,10 +24,19 @@ An administrator completes the following configuration before rollout:
    setting. Set the dedicated OAuth application's `audience_uri` to
    `https://YOUR_KULT_HOST/api/mcp`; enabling audience claims alone does not
    configure the application's resource. Require S256 PKCE. Kult introspects every token through Clerk to
-   check authenticity and revocation, pins the dedicated client ID, and requires
+   check authenticity and provider-reported validity, pins the dedicated client ID, and requires
    the exact issuer and audience `https://YOUR_KULT_HOST/api/mcp`. Tokens with a
    client-ID audience or no audience are rejected. See
    [Clerk's OAuth configuration](https://clerk.com/docs/guides/configure/auth-strategies/oauth/how-clerk-implements-oauth).
+
+   Clerk's OAuth introspection `expiration` is a Unix timestamp in **seconds**.
+   Convert it to milliseconds before comparing with `Date.now()`. The SDK
+   passes this field through without conversion; using API-key expiry units
+   here rejects valid OAuth tokens immediately after successful consent.
+   JWT access tokens remain valid until expiry even after grant revocation;
+   Clerk does not support instant JWT revocation. Current membership and role
+   checks still apply immediately to every operation. See
+   [Clerk's token formats](https://clerk.com/docs/guides/development/machine-auth/token-formats).
 4. Set the following on the web server:
 
    ```dotenv
@@ -278,8 +287,10 @@ after a network timeout.
   which tools are exposed; current membership and roles still apply. The provider
   scopes alone never grant product writes. Media preview remains available to
   read-only keys.
-- Every HTTP request verifies its bearer credential with Clerk, rejecting revocation and
-  expiration, subject to Clerk propagation of revocation. Every operation
+- Every HTTP request verifies its bearer credential with Clerk and rejects expiry
+  and provider-reported revocation. Opaque keys support revocation subject to
+  Clerk propagation; OAuth JWTs cannot be instantly revoked and expire after one
+  day. Every operation
   re-reads membership and current role from Turso.
   Removing a member invalidates their workspace access; demoting a user changes
   their permissions without waiting for a key to expire.

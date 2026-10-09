@@ -981,5 +981,34 @@ table counts verified, then encrypted outside Git. There is no schema or
 dependency change. Verify the deployed JSON-only discovery path and require
 the user's fresh ChatGPT connection before claiming end-to-end host success.
 
+## OAuth discovery expiry correction — 9 October 2026
+
+A real isolated test-account flow reproduced the user's failure after Clerk
+consent: S256 PKCE code exchange issued a resource-bound `at+jwt` access token
+for the configured ChatGPT client, and Clerk introspection accepted it. The
+introspection response returned `expiration` as Unix seconds (for example,
+`1791613191`), but Kult compared it directly with millisecond `Date.now()`.
+This rejected the valid token with 401 before `tools/list` could run. API-key
+smoke tests could not detect this OAuth-specific unit mismatch.
+
+OAuth expiry is now converted from seconds to milliseconds. Online Clerk
+introspection, provider-reported validity, issuer/audience/client validation, scope
+checks and current workspace membership remain enforced. Regression fixtures
+now use the actual provider's seconds format and exercise authenticated
+initialization, all 47 tools, profile/workspace calls and expiry boundaries.
+There is no provider configuration, schema, dependency or credential change.
+A fresh Turso export was restored with integrity OK and all 30 table counts
+verified, then encrypted outside Git before release. The real test account,
+its empty workspace and temporary credentials must be removed after live
+verification. Only that isolated account is used; no owner session is used.
+Clerk JWT access tokens cannot be instantly revoked; they expire after one day.
+The earlier statement that introspection guarantees immediate JWT revocation
+was incorrect. Live membership removal still immediately denies workspace access.
+
+Before release, the exact real OAuth token rejected by the current deployment
+loaded all 47 tools and passed nine read operations against the fixed production
+build with JSON-only Accept headers. The isolated release passed 318 tests,
+typecheck, production build and lint with zero errors and the same three warnings.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.

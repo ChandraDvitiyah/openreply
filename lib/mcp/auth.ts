@@ -51,8 +51,8 @@ async function authenticateOAuth(token: string): Promise<AgentIdentity> {
   const config = getOAuthConfig();
   let access;
   try {
-    // Always use Clerk's authenticated introspection endpoint, including for
-    // JWTs, so revocation is checked rather than cached local JWT verification.
+    // Clerk introspection verifies authenticity and provider-reported status.
+    // JWT grants cannot be instantly revoked; live workspace checks still apply.
     access = await (await clerkClient()).idPOAuthAccessToken.verify(token);
   } catch (error) {
     const status = (error as { status?: number })?.status;
@@ -60,8 +60,9 @@ async function authenticateOAuth(token: string): Promise<AgentIdentity> {
       throw new AgentAuthError("The OAuth access token is invalid, expired, or revoked.", 401);
     throw new AgentAuthError("Account authentication is temporarily unavailable.", 503);
   }
+  // OAuth introspection uses Unix seconds (unlike Clerk API-key expiry).
   if (access.clientId !== config.clientId || !access.subject.startsWith("user_") ||
-      access.revoked || access.expired || typeof access.expiration !== "number" || !Number.isFinite(access.expiration) || access.expiration <= Date.now())
+      access.revoked || access.expired || typeof access.expiration !== "number" || !Number.isFinite(access.expiration) || access.expiration * 1000 <= Date.now())
     throw new AgentAuthError("The OAuth token is not valid for Kult MCP.", 401);
   const requiredScopes = oauthToolScopes(false);
   if (!requiredScopes.every((scope) => access.scopes.includes(scope)))
