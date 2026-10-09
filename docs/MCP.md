@@ -1,6 +1,6 @@
 # Kult for AI agents
 
-Kult exposes its product features through 47 tools on a remote MCP server at `/api/mcp`.
+Kult exposes its product features through 49 tools on a remote MCP server at `/api/mcp`.
 The server uses the official MCP TypeScript SDK with stateless Streamable HTTP
 and JSON responses. It works across Vercel instances without an in-memory
 session store or another server process.
@@ -243,7 +243,7 @@ redirects with the bearer token. HTTPS is required except on local loopback.
 | Templates and imports | Built-in campaign templates and playbooks; bulk import structured CSV rows with duplicate feedback |
 | Facebook automations | List with logs, create, pause/resume and delete Messenger/comment-to-message automations |
 | Scheduler | Supported content types, drafts, future/immediate publication, cursor pagination, edit/cancel/retry/duplicate, revision control and uncertain-delivery resolution |
-| Media | Signed file upload preparation and temporary preview/download URLs |
+| Media | Direct ChatGPT attachment and base64 byte uploads to workspace storage, signed upload preparation, and temporary preview/download URLs |
 | Analytics | Dashboard/usage, cross-platform views and insights, performance refresh, full campaign reports with seven-day trends and DM delivery logs |
 | Inbox | List conversations, read message history and send replies |
 | Link Studio | Read/edit profile and public URL, create/edit/delete/reorder links, enable/disable links and smart app destinations |
@@ -261,10 +261,27 @@ Example instruction for your agent:
 > LINK campaign with two message variants and a tracked product URL, verify the
 > campaign, and report its share URL.
 
-For publishing, call `prepare_media_upload`, upload bytes with **PUT** to the
-returned `uploadUrl` using the returned `headers`, then use **mediaUrl** in the
-post. Do not send the Kult bearer token to Backblaze. Alternatively use an
-existing public HTTPS media URL. Instagram images require JPEG.
+For ChatGPT publishing, attach the media and call `upload_media_file` with the
+platform and post kind. Its top-level `file` parameter uses OpenAI's native
+`openai/fileParams` contract: ChatGPT supplies `download_url` and `file_id`,
+optionally `mime_type` and `file_name`. Kult downloads the actual bytes and
+streams them into the existing Backblaze bucket under the authenticated
+workspace. One call returns `uploaded: true`, `mediaUrl`, byte size and SHA-256;
+pass that `mediaUrl` directly to post creation. No manual PUT or storage login
+is needed. Files retain their original bytes and must meet the existing
+platform format and size limits; Instagram images require JPEG.
+
+Other clients can call `upload_media_bytes` with standard base64 and a MIME
+type for up to 3,000,000 decoded bytes. Larger attachments use the streaming
+file tool, avoiding Vercel's request-body limit. Transfers have a four-minute
+deadline, and failed multipart uploads are aborted. Both upload tools require
+write access and current workspace membership. Native attachment discovery
+follows [OpenAI's file API contract](https://developers.openai.com/plugins/reference#file-apis).
+
+Clients with their own HTTP uploader can still call `prepare_media_upload`,
+PUT the bytes to its signed URL using the returned headers, and use `mediaUrl`
+in the post. Do not send the Kult bearer token to Backblaze. Existing public
+HTTPS media URLs also remain supported.
 
 Use a stable UUID `clientRequestId` when retrying post creation. Publication is
 asynchronous: monitor `list_scheduled_posts` to a terminal status before declaring

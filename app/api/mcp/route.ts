@@ -6,7 +6,7 @@ import { getBaseUrl } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function acceptsJson(request: Request) {
   const accept = request.headers.get("accept");
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const transportRequest = new Request(request, { headers });
     const server = createAgentServer(identity, getBaseUrl());
     const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: 1024 * 1024,
+      sessionIdGenerator: undefined, enableJsonResponse: true, maxRequestBodySize: 4 * 1024 * 1024,
     });
     try {
       await server.connect(transport);

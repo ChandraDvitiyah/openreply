@@ -7,11 +7,16 @@ import { NextRequest } from "next/server";
 import { readdir } from "node:fs/promises";
 import { z } from "zod";
 import Ajv from "ajv";
+import { createHash } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   clerkAuth: vi.fn(), currentUser: vi.fn(), verify: vi.fn(), oauthVerify: vi.fn(), keyCreate: vi.fn(), keyList: vi.fn(), keyGet: vi.fn(), keyRevoke: vi.fn(),
   membership: vi.fn(), accounts: vi.fn(), account: vi.fn(), workspace: vi.fn(), createCampaign: vi.fn(),
   user: vi.fn(), memberList: vi.fn(), invitations: vi.fn(), memberUpsert: vi.fn(), campaignLookup: vi.fn(),
+  storeMedia: vi.fn(),
+}));
+vi.mock("@/lib/scheduler/storage", async (original) => ({
+  ...await original<typeof import("@/lib/scheduler/storage")>(), storeSchedulerMedia: mocks.storeMedia,
 }));
 vi.mock("@clerk/nextjs/server", () => ({
   auth: mocks.clerkAuth, currentUser: mocks.currentUser,
@@ -85,6 +90,12 @@ beforeEach(() => {
   mocks.account.mockImplementation(async ({ where }) => where.id === "ig_other" ? null : { id: "ig_one" });
   mocks.createCampaign.mockImplementation(async ({ data }) => ({ id: "campaign_one", ...data }));
   mocks.user.mockResolvedValue({ id: "user_one", email: "owner@example.com", name: "Owner", image: null });
+  mocks.storeMedia.mockImplementation(async (workspaceId, contentType, source) => {
+    const chunks = []; for await (const chunk of source) chunks.push(Buffer.from(chunk));
+    const bytes = Buffer.concat(chunks);
+    return { uploaded: true, mediaUrl: `https://f005.backblazeb2.com/file/kult-media/scheduler/${workspaceId}/00000000-0000-0000-0000-000000000001.jpg`,
+      contentType, size: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
+  });
 });
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((client) => client.close()));
@@ -118,7 +129,7 @@ describe("Kult MCP protocol and product workflows", () => {
   it("initializes a real SDK client, lists typed tools, and reads workflow resources", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(AGENT_TOOLS.length + 4);
+    expect(tools.length).toBe(AGENT_TOOLS.length + 6);
     expect(tools.find((t) => t.name === "create_campaign")?.inputSchema.properties).toHaveProperty("body");
     const schema = tools.find((t) => t.name === "create_scheduled_post")?.inputSchema;
     expect(JSON.stringify(schema)).toContain("clientRequestId");
@@ -232,7 +243,7 @@ describe("MCP credential and transport boundaries", () => {
         const response = await POST(request);
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("application/json");
-        expect((await response.json()).result.tools).toHaveLength(47);
+        expect((await response.json()).result.tools).toHaveLength(49);
       }
     });
 
@@ -306,7 +317,7 @@ describe("MCP credential and transport boundaries", () => {
   });
 
   it("limits payload size before parsing", async () => {
-    const request = rpc("tools/list"); request.headers.set("Content-Length", "1048577");
+    const request = rpc("tools/list"); request.headers.set("Content-Length", String(4 * 1024 * 1024 + 1));
     expect((await POST(request)).status).toBe(413);
   });
 });
@@ -358,10 +369,46 @@ describe("browser-only credential management", () => {
 });
 
 describe("ChatGPT OAuth account connection", () => {
+  it("advertises native ChatGPT attachment inputs with the exact fileParams schema", async () => {
+    const body = await (await POST(rpc("tools/list", undefined, null))).json();
+    const file = body.result.tools.find((t: { name: string }) => t.name === "upload_media_file");
+    expect(file._meta["openai/fileParams"]).toEqual(["file"]);
+    expect(file.inputSchema.properties.file.required).toEqual(["download_url", "file_id"]);
+    expect(Object.keys(file.inputSchema.properties.file.properties).sort()).toEqual(["download_url", "file_id", "file_name", "mime_type"]);
+    expect(file.securitySchemes[0].type).toBe("oauth2");
+    expect(file.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false });
+    expect(file.outputSchema.properties.uploaded.const).toBe(true);
+  });
+
+  it("stores actual bytes from a JSON MCP request over 1 MB in the authenticated workspace", async () => {
+    const bytes = Buffer.concat([Buffer.from([255, 216, 255]), Buffer.alloc(2 * 1024 ** 2, 123)]);
+    const args = { platform: "INSTAGRAM", kind: "IMAGE", contentType: "image/jpeg", dataBase64: bytes.toString("base64") };
+    const request = rpc("tools/call", { name: "upload_media_bytes", arguments: args });
+    request.headers.set("Accept", "application/json");
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.isError).toBe(false);
+    expect(body.result.structuredContent).toMatchObject({ uploaded: true, size: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"), mediaUrl: expect.stringContaining("/scheduler/workspace_one/") });
+    expect(mocks.storeMedia).toHaveBeenCalledWith("workspace_one", "image/jpeg", expect.anything(), bytes.length, expect.any(AbortSignal), bytes.length);
+    expect(JSON.stringify(body)).not.toContain(args.dataBase64);
+  });
+
+  it("rejects read-only and anonymous uploads before storing or fetching file bytes", async () => {
+    const args = { platform: "FACEBOOK", kind: "IMAGE", contentType: "image/jpeg", dataBase64: "/9j/" };
+    const read = await connect("read-key");
+    expect((await read.listTools()).tools.some(t => t.name.startsWith("upload_media_"))).toBe(false);
+    expect((await read.callTool({ name: "upload_media_bytes", arguments: args })).isError).toBe(true);
+    const body = await (await POST(rpc("tools/call", { name: "upload_media_bytes", arguments: args }, null))).json();
+    expect(body.result._meta["mcp/www_authenticate"]).toHaveLength(1);
+    expect(mocks.storeMedia).not.toHaveBeenCalled();
+  });
+
   it("lets an anonymous SDK client initialize and discover all protected tools without accessing account data", async () => {
     const client = await connect(null);
     const tools = (await client.listTools()).tools;
-    expect(tools).toHaveLength(47);
+    expect(tools).toHaveLength(49);
     expect(tools.some((tool) => tool.name === "create_campaign")).toBe(true);
     expect(tools.every((tool) => (tool._meta?.securitySchemes as { type: string }[])[0].type === "oauth2")).toBe(true);
     const response = await POST(rpc("tools/list", undefined, null));
@@ -503,7 +550,7 @@ describe("ChatGPT OAuth account connection", () => {
       expiration: now + 86400 });
     const token = jwt();
     const client = await connect(token);
-    expect((await client.listTools()).tools).toHaveLength(47);
+    expect((await client.listTools()).tools).toHaveLength(49);
     expect((await client.callTool({ name: "get_connected_profile" })).structuredContent).toMatchObject({ id: "user_one" });
     expect((await client.callTool({ name: "get_workspace" })).structuredContent).toMatchObject({ scopes: ["kult:read", "kult:write"] });
     // The same provider response expires at the Unix-second boundary even if

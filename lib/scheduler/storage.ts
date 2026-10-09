@@ -1,9 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import {
   GetObjectCommand,
   DeleteObjectCommand,
   ListObjectVersionsCommand,
   PutObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -268,6 +272,83 @@ export async function createSchedulerUpload(
 
 export async function schedulerStorageBucketName() {
   return (await connection()).bucketName;
+}
+
+// Server-side ingestion for agent files. Stream in bounded parts rather than
+// buffering entire videos. Incomplete multipart uploads are never published.
+export async function storeSchedulerMedia(
+  workspaceId: string, contentType: string, source: AsyncIterable<Uint8Array>,
+  limit: number, signal: AbortSignal, expectedSize?: number,
+) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(workspaceId) || !extensions[contentType])
+    throw new StorageError("Invalid upload metadata.");
+  const { client, bucketName, downloadUrl } = await connection();
+  const key = `scheduler/${workspaceId}/${randomUUID()}.${extensions[contentType]}`;
+  const hash = createHash("sha256");
+  const partSize = 8 * 1024 ** 2;
+  const parts: { PartNumber: number; ETag: string }[] = [];
+  let pending: Buffer[] = [], pendingSize = 0, size = 0, uploadId: string | undefined;
+  async function uploadPart() {
+    signal.throwIfAborted();
+    if (!uploadId) {
+      const created = await client.send(new CreateMultipartUploadCommand({
+        Bucket: bucketName, Key: key, ContentType: contentType,
+      }), { abortSignal: signal });
+      uploadId = created.UploadId;
+      if (!uploadId) throw new StorageError("Storage did not start the file upload.");
+    }
+    const body = Buffer.concat(pending, pendingSize);
+    pending = []; pendingSize = 0;
+    const PartNumber = parts.length + 1;
+    const uploaded = await client.send(new UploadPartCommand({
+      Bucket: bucketName, Key: key, UploadId: uploadId, PartNumber,
+      Body: body, ContentLength: body.length,
+    }), { abortSignal: signal });
+    if (!uploaded.ETag) throw new StorageError("Storage did not confirm the file part.");
+    parts.push({ PartNumber, ETag: uploaded.ETag });
+  }
+  try {
+    for await (const chunk of source) {
+      signal.throwIfAborted();
+      size += chunk.byteLength;
+      if (size > limit) throw new StorageError("The file exceeds the size limit for this post type.");
+      hash.update(chunk);
+      // Split even an unusually large incoming chunk into bounded parts.
+      for (let offset = 0; offset < chunk.byteLength;) {
+        const length = Math.min(partSize - pendingSize, chunk.byteLength - offset);
+        pending.push(Buffer.from(chunk.buffer, chunk.byteOffset + offset, length));
+        pendingSize += length; offset += length;
+        if (pendingSize === partSize) await uploadPart();
+      }
+    }
+    if (!size || (expectedSize !== undefined && size !== expectedSize))
+      throw new StorageError("The file download was empty or incomplete. Retry with a fresh file attachment.");
+    if (uploadId) {
+      if (pendingSize) await uploadPart();
+      await client.send(new CompleteMultipartUploadCommand({
+        Bucket: bucketName, Key: key, UploadId: uploadId, MultipartUpload: { Parts: parts },
+      }), { abortSignal: signal });
+      uploadId = undefined;
+    } else {
+      await client.send(new PutObjectCommand({
+        Bucket: bucketName, Key: key, ContentType: contentType,
+        ContentLength: size, Body: Buffer.concat(pending, pendingSize),
+      }), { abortSignal: signal });
+    }
+    return { mediaUrl: `${downloadUrl}/file/${bucketName}/${key}`, contentType, size,
+      sha256: hash.digest("hex"), uploaded: true as const };
+  } catch (error) {
+    if (uploadId) {
+      await client.send(new AbortMultipartUploadCommand({
+        Bucket: bucketName, Key: key, UploadId: uploadId,
+      }), { abortSignal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+    }
+    // Never expose provider responses, signed URLs or keys in tool errors.
+    if (error instanceof StorageError) throw error;
+    throw new StorageError(signal.aborted
+      ? "The upload timed out. Retry with a fresh file attachment."
+      : "Storage could not complete the file upload. Please retry.");
+  }
 }
 export function ownsSchedulerMedia(
   workspaceId: string,

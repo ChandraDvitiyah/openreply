@@ -1010,5 +1010,33 @@ loaded all 47 tools and passed nine read operations against the fixed production
 build with JSON-only Accept headers. The isolated release passed 318 tests,
 typecheck, production build and lint with zero errors and the same three warnings.
 
+## Direct MCP media ingestion — 9 October 2026
+
+MCP now exposes 49 tools. `upload_media_file` declares OpenAI's native file
+input metadata and transfers attachment bytes directly into the existing
+workspace-scoped Backblaze storage. `upload_media_bytes` ingests up to
+3,000,000 decoded bytes in one request. Both tools enforce write access,
+current membership, supported media formats and existing platform size limits,
+and return a stable media reference, byte size and SHA-256 after storage succeeds.
+The workflow guide and catalogue include both upload paths. No dependencies,
+schema changes, storage credentials or provider configuration changes are needed.
+
+Attachment downloads validate and pin public DNS for each HTTPS redirect.
+They never forward the MCP credential. Storage streams in 8 MiB parts,
+aborts incomplete multipart transfers, and preserves the original bytes.
+The MCP function allows a 4 MiB JSON request and 300-second runtime; transfers
+have a 240-second deadline. Vercel project readback confirmed Fluid compute
+is enabled. Native attachments avoid the platform's request-body limit.
+
+The release passed 351 tests, typecheck through the production build, and lint
+with zero errors and the same three existing warnings. Before production
+changes, health was OK and a fresh Turso backup was restored with integrity
+and all 30 table counts verified, then encrypted outside Git. An isolated
+Clerk OAuth account is used for real storage tests; no owner session or Meta
+publication is used. Live verification must check stored download checksums
+for both an inline image and a multipart video, then remove all test object
+versions, the temporary workspace, OAuth grant and Clerk test account.
+The actual ChatGPT attachment UI is verified separately by the owner.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.

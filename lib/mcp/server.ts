@@ -8,6 +8,9 @@ import { agentContext } from "./context";
 import { AGENT_TOOLS, invokeProductTool, isWriteTool } from "./tools";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 import { supportedKinds } from "@/lib/scheduler/capabilities";
+import { StorageError } from "@/lib/scheduler/storage";
+import { attachmentInput, bytesInput, uploadOutput, uploadMediaAttachment,
+  uploadMediaBytes, MediaUploadError, MAX_INLINE_MEDIA_BYTES } from "./media-upload";
 
 export const AGENT_GUIDE = `Kult agent workflows
 You act as the credential's user in one workspace. Existing workspace roles and
@@ -20,8 +23,11 @@ get_campaign_report reads the full report and seven-day delivery/click trends.
 All campaign features (message variants, opening DMs, public replies, keyword
 matching, next/future reel targeting, tracked links and report sharing) are in
 the create/update schemas. CSV imports use structured rows in import_campaigns.
-Publishing: get_publishing_capabilities, prepare_media_upload, PUT bytes to
-the returned uploadUrl with returned headers, then use the returned mediaUrl.
+Publishing: use upload_media_file for a ChatGPT attachment. Kult downloads and
+stores its actual bytes in your workspace and returns mediaUrl ready for a post.
+Use upload_media_bytes for available base64 bytes (up to 3,000,000 decoded bytes).
+For other clients with large local files, prepare_media_upload returns a signed
+PUT URL. Upload bytes with its headers. Never publish before upload succeeds.
 Use a stable UUID clientRequestId for retried create_scheduled_post calls.
 intent=draft saves; schedule sets a future time; now queues immediate delivery.
 Poll list_scheduled_posts until PUBLISHED, FAILED, CANCELLED or NEEDS_REVIEW.
@@ -63,8 +69,10 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
       return await action(identity, context);
     } catch (error) {
       const authError = error instanceof AgentAuthError;
-      return { ...result({ status: authError ? error.status : 500,
-        error: authError ? error.message : "The product operation failed. Check diagnostics before retrying." }, true),
+      const uploadError = error instanceof MediaUploadError;
+      const storageError = error instanceof StorageError;
+      return { ...result({ status: authError || uploadError ? error.status : storageError ? 503 : 500,
+        error: authError || uploadError || storageError ? error.message : "The product operation failed. Check diagnostics before retrying." }, true),
       ...(authError && (error.status === 401 || error.challenge) ? {
         _meta: { "mcp/www_authenticate": [authChallenge(error.challenge ?? "invalid_token")] },
       } : {}) };
@@ -94,6 +102,20 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
         return result({ status: output.status, ...output.data }, output.status >= 400);
     }));
   }
+  if (writable) {
+    const annotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
+    server.registerTool("upload_media_file", describe("upload_media_file", {
+      description: "Upload a ChatGPT file attachment's actual bytes directly into your Kult workspace storage. Use this for attached images/videos before scheduling or publishing. Kult handles the download and upload, preserves bytes and returns a ready mediaUrl and SHA-256. No manual PUT or public hosting is needed. Existing platform file limits apply; Instagram images must be JPEG.",
+      inputSchema: attachmentInput, outputSchema: uploadOutput, annotations,
+      _meta: { "openai/fileParams": ["file"] },
+    }, true), async (args) => withAccess(true, async (_identity, context) =>
+      result({ status: 200, ...await uploadMediaAttachment(context.workspaceId, args) })));
+    server.registerTool("upload_media_bytes", describe("upload_media_bytes", {
+      description: "Upload actual image/video bytes encoded as base64 directly into Kult storage and return a ready mediaUrl and SHA-256. Maximum 3,000,000 decoded bytes. Use only bytes you actually have; never invent base64. For ChatGPT attachments or larger files use upload_media_file, which transfers bytes automatically.",
+      inputSchema: bytesInput, outputSchema: uploadOutput, annotations,
+    }, true), async (args) => withAccess(true, async (_identity, context) =>
+      result({ status: 200, ...await uploadMediaBytes(context.workspaceId, args) })));
+  }
   server.registerTool("get_workspace", describe("get_workspace", { description: "Read the credential's workspace, current role, and allowed scopes.", inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async (identity, context) => {
     return result({ workspace: { id: context.workspaceId, name: context.workspace.name }, role: context.role, scopes: identity.scopes });
@@ -104,6 +126,7 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
     annotations: { readOnlyHint: true, openWorldHint: false } }), async () => withAccess(false, async () => result({
     instagram: supportedKinds("INSTAGRAM"), facebook: supportedKinds("FACEBOOK"),
     delivery: "asynchronous", media: "Public HTTPS URLs or workspace uploads; Instagram images must be JPEG.",
+    uploads: { chatgptAttachments: "upload_media_file", inlineBytes: "upload_media_bytes", maxInlineBytes: MAX_INLINE_MEDIA_BYTES },
   })));
   const profileSchema = { id: z.string().min(1).regex(/\S/), name: z.string().optional(),
     email: z.string().optional(), nickname: z.string().optional() };
@@ -121,6 +144,6 @@ export function createAgentServer(identity: AgentIdentity | null, baseUrl: strin
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: "text/plain", text: AGENT_GUIDE }] }));
   server.registerResource("tool-catalogue", "kult://tools", { mimeType: "application/json", description: "Features available to this credential." },
     async (uri) => ({ contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(
-      AGENT_TOOLS.filter((t) => writable || !isWriteTool(t)).map((t) => ({ name: t.name, description: t.description, write: isWriteTool(t) }))) }] }));
+      catalogue.map((t) => ({ name: t.name, description: t.description, write: !t.annotations?.readOnlyHint }))) }] }));
   return server;
 }
