@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import LinkStudio from "@/components/link-studio";
 import { getCurrentUserId } from "@/lib/auth";
-import { ensureBioProfile, listBioLinks } from "@/lib/bio-db";
+import { ensureBioProfile, listBioLinks, listBioProfiles } from "@/lib/bio-db";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Link Studio — Kult" };
@@ -17,6 +17,7 @@ export default async function LinksPage() {
     avatarUrl: user?.imageUrl,
   });
   const links = await listBioLinks(userId);
+  const profiles = await listBioProfiles(userId);
 
   return (
     <div className="space-y-6">
@@ -29,7 +30,7 @@ export default async function LinksPage() {
           Publish your apps, route visitors to the right store, and measure every click.
         </p>
       </div>
-      <LinkStudio initialProfile={profile} initialLinks={links} />
+      <LinkStudio initialProfile={profile} initialLinks={links} initialProfiles={profiles} />
     </div>
   );
 }

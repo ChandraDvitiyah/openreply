@@ -23,6 +23,7 @@ import {
   isStory,
   isVideo,
   kindLabels,
+  postKinds,
   readPublishingOptions,
   supportedKinds,
   type PostKind,
@@ -119,7 +120,13 @@ export default function Scheduler() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<"list" | "calendar">("list");
-  const [filter, setFilter] = useState("");
+  const [filters, setFilters] = useState({
+    status: "SCHEDULED",
+    platform: "" as Account["platform"] | "",
+    accountId: "",
+    kind: "" as PostKind | "",
+  });
+  const filter = filters.status;
   const [search, setSearch] = useState("");
   const [timezone, setTimezone] = useState("UTC");
   const [zones, setZones] = useState(["UTC"]);
@@ -143,6 +150,9 @@ export default function Scheduler() {
       try {
         const params = new URLSearchParams();
         if (filter) params.set("status", filter);
+        if (filters.platform) params.set("platform", filters.platform);
+        if (filters.accountId) params.set("accountId", filters.accountId);
+        if (filters.kind) params.set("kind", filters.kind);
         if (search) params.set("search", search);
         if (view === "calendar") {
           const range = calendarDays(month);
@@ -174,7 +184,7 @@ export default function Scheduler() {
         if (currentRequest === requestId.current) setLoading(false);
       }
     },
-    [month, filter, search, view, nextCursor],
+    [month, filters, filter, search, view, nextCursor],
   );
 
   useEffect(() => {
@@ -192,7 +202,7 @@ export default function Scheduler() {
     return () => clearTimeout(timer);
     // Pagination changes must not reset the loaded list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, filter, search, view]);
+  }, [month, filters, search, view]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (
@@ -233,6 +243,28 @@ export default function Scheduler() {
           selectedDay,
         )),
   );
+  function clearPlannerResults() {
+    // Invalidate an in-flight request immediately, before the debounced reload.
+    requestId.current += 1;
+    setLoading(true);
+    setData((current) =>
+      current ? { ...current, posts: [], nextCursor: null } : current,
+    );
+  }
+  function changeFilters(next: Partial<typeof filters>) {
+    if (
+      Object.entries(next).every(
+        ([key, value]) => filters[key as keyof typeof filters] === value,
+      )
+    ) return;
+    clearPlannerResults();
+    setFilters((current) => ({ ...current, ...next }));
+  }
+  function changeSearch(next: string) {
+    if (next === search) return;
+    clearPlannerResults();
+    setSearch(next);
+  }
   function change(values: Partial<typeof form>) {
     setForm((current) => ({ ...current, ...values }));
     if (values.media !== undefined) setPreviewIndex(0);
@@ -568,9 +600,10 @@ export default function Scheduler() {
           <button
             key={status}
             onClick={() => {
-              setFilter(status);
+              changeFilters({ status });
               setView("list");
             }}
+            aria-pressed={filter === status}
             className="scheduler-stat"
           >
             <span>{label}</span>
@@ -600,7 +633,7 @@ export default function Scheduler() {
           <button
             className="underline"
             onClick={() => {
-              setFilter("NEEDS_REVIEW");
+              changeFilters({ status: "NEEDS_REVIEW" });
               setView("list");
             }}
           >
@@ -1128,24 +1161,89 @@ export default function Scheduler() {
             className="field scheduler-search"
             placeholder="Search title, caption, account…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => changeSearch(e.target.value)}
           />
-          <label className="sr-only" htmlFor="scheduler-filter">
-            Filter status
+          <label className="scheduler-filter-group" htmlFor="scheduler-filter">
+            <span>Status</span>
+            <select
+              id="scheduler-filter"
+              className="field scheduler-filter"
+              value={filter}
+              onChange={(e) => changeFilters({ status: e.target.value })}
+            >
+              <option value="">All statuses</option>
+              {Object.entries(labels).map(([status, label]) => (
+                <option key={status} value={status}>{label}</option>
+              ))}
+            </select>
           </label>
-          <select
-            id="scheduler-filter"
-            className="field scheduler-filter"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+          <label className="scheduler-filter-group" htmlFor="scheduler-platform">
+            <span>Platform</span>
+            <select
+              id="scheduler-platform"
+              className="field scheduler-filter"
+              value={filters.platform}
+              onChange={(e) => {
+                const platform = e.target.value as Account["platform"] | "";
+                const selectedAccount = accounts.find(
+                  (item) => item.id === filters.accountId,
+                );
+                changeFilters({
+                  platform,
+                  accountId: platform && selectedAccount?.platform !== platform
+                    ? "" : filters.accountId,
+                  kind: platform && filters.kind && !supportedKinds(platform).includes(filters.kind)
+                    ? "" : filters.kind,
+                });
+              }}
+            >
+              <option value="">All platforms</option>
+              <option value="INSTAGRAM">Instagram</option>
+              <option value="FACEBOOK">Facebook</option>
+            </select>
+          </label>
+          <label className="scheduler-filter-group" htmlFor="scheduler-account">
+            <span>Account</span>
+            <select
+              id="scheduler-account"
+              className="field scheduler-filter"
+              value={filters.accountId}
+              onChange={(e) => changeFilters({ accountId: e.target.value })}
+            >
+              <option value="">All accounts</option>
+              {accounts
+                .filter((item) => !filters.platform || item.platform === filters.platform)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.platform === "INSTAGRAM" ? "Instagram" : "Facebook"}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="scheduler-filter-group" htmlFor="scheduler-kind">
+            <span>Content type</span>
+            <select
+              id="scheduler-kind"
+              className="field scheduler-filter"
+              value={filters.kind}
+              onChange={(e) => changeFilters({ kind: e.target.value as PostKind | "" })}
+            >
+              <option value="">All content types</option>
+              {(filters.platform ? supportedKinds(filters.platform) : postKinds).map((kind) => (
+                <option key={kind} value={kind}>{kindLabels[kind]}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="scheduler-text-button"
+            onClick={() => {
+              changeFilters({ status: "SCHEDULED", platform: "", accountId: "", kind: "" });
+              changeSearch("");
+              setSelectedDay("");
+            }}
           >
-            <option value="">All statuses</option>
-            {Object.entries(labels).map(([status, label]) => (
-              <option key={status} value={status}>
-                {label}
-              </option>
-            ))}
-          </select>
+            Reset filters
+          </button>
           <button
             className="scheduler-text-button"
             aria-label="Refresh posts"
@@ -1301,7 +1399,7 @@ export default function Scheduler() {
             </div>
           </>
         )}
-        {loading && !data ? (
+        {loading && !visiblePosts.length ? (
           <div role="status" className="scheduler-empty">
             Loading your content planner…
           </div>
@@ -1311,14 +1409,18 @@ export default function Scheduler() {
           <div className="scheduler-empty">
             <CalendarDays size={30} />
             <h2>
-              {filter || search || selectedDay
+              {filter === "SCHEDULED" && !filters.platform && !filters.accountId && !filters.kind && !search && !selectedDay
+                ? "No scheduled posts"
+                : filter || filters.platform || filters.accountId || filters.kind || search || selectedDay
                 ? "No posts match this view"
                 : view === "calendar"
                   ? "Your calendar is clear"
                   : "Make room for your next idea"}
             </h2>
             <p>
-              {view === "calendar"
+              {filters.platform || filters.accountId || filters.kind || search
+                ? "Try another filter or reset filters to see scheduled posts."
+                : view === "calendar"
                 ? "Choose a day’s + button to schedule a post. Unscheduled drafts appear in List view."
                 : "Save an idea as a draft, or plan your next post ahead of time."}
             </p>

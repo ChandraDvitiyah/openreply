@@ -244,6 +244,7 @@ model SocialPerformanceSnapshot {
   shares             Int?
   interactions       Int?
   insightsAvailable Boolean        @default(false)
+  videoPosts         Json?
   capturedAt         DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 

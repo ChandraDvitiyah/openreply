@@ -1,27 +1,15 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 
-type DashboardDataCache = {
-  get<T>(key: string): T | null;
-  set<T>(key: string, value: T): void;
-};
+import { createDashboardDataCache } from "@/lib/performance/dashboard-cache";
+
+type DashboardDataCache = ReturnType<typeof createDashboardDataCache>;
 
 const DashboardDataCacheContext = createContext<DashboardDataCache | null>(null);
 
 export function DashboardDataCacheProvider({ children }: { children: React.ReactNode }) {
-  const entries = useRef(new Map<string, unknown>());
-  const cache = useMemo<DashboardDataCache>(
-    () => ({
-      get<T>(key: string) {
-        return (entries.current.get(key) as T | undefined) ?? null;
-      },
-      set<T>(key: string, value: T) {
-        entries.current.set(key, value);
-      },
-    }),
-    []
-  );
+  const cache = useMemo(() => createDashboardDataCache(), []);
 
   return (
     <DashboardDataCacheContext.Provider value={cache}>
@@ -36,4 +24,9 @@ export function useDashboardDataCache() {
     throw new Error("useDashboardDataCache must be used inside DashboardDataCacheProvider");
   }
   return cache;
+}
+
+export function usePerformanceRevision(days: number) {
+  const cache = useDashboardDataCache();
+  return useSyncExternalStore(cache.subscribe, () => cache.revision(days), () => 0);
 }

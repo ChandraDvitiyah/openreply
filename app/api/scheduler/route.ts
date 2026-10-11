@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db/client";
 import { getCurrentWorkspaceContext } from "@/lib/workspace-access";
 import { postInputSchema } from "@/lib/scheduler/validation";
 import { createPost } from "@/lib/scheduler/service";
 import { schedulerFailure } from "@/lib/scheduler/http";
 import { schedulerStorageConfigured } from "@/lib/scheduler/storage";
+import { postKinds } from "@/lib/scheduler/capabilities";
 import { asStringArray } from "@/lib/utils/string-list";
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,12 @@ export async function GET(request: NextRequest) {
       );
     const cursor = request.nextUrl.searchParams.get("cursor");
     const status = request.nextUrl.searchParams.get("status");
+    const platform = request.nextUrl.searchParams.get("platform");
+    const accountId = request.nextUrl.searchParams.get("accountId");
+    const kind = request.nextUrl.searchParams.get("kind");
+    const platformFilter =
+      platform === "INSTAGRAM" || platform === "FACEBOOK" ? platform : undefined;
+    const kindFilter = postKinds.find((item) => item === kind);
     const search = request.nextUrl.searchParams.get("search")?.slice(0, 120);
     const start = request.nextUrl.searchParams.get("start");
     const end = request.nextUrl.searchParams.get("end");
@@ -31,9 +39,21 @@ export async function GET(request: NextRequest) {
       "NEEDS_REVIEW",
     ] as const;
     const statusFilter = validStatuses.find((s) => s === status);
-    const where = {
+    const where: Prisma.ScheduledPostWhereInput = {
       workspaceId: context.workspaceId,
       ...(statusFilter ? { status: statusFilter } : {}),
+      ...(platformFilter ? { platform: platformFilter } : {}),
+      ...(kindFilter ? { kind: kindFilter } : {}),
+      ...(accountId
+        ? {
+            AND: [{
+              OR: [
+                { instagramAccountId: accountId },
+                { facebookPageId: accountId },
+              ],
+            }],
+          }
+        : {}),
       ...(search
         ? {
             OR: [

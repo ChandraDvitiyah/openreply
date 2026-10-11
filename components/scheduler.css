@@ -24,6 +24,10 @@
   border: 1px solid var(--color-border);
   border-radius: 16px;
 }
+.scheduler-stat[aria-pressed="true"] {
+  border-color: #86cd51;
+  background: #f4f9ed;
+}
 .scheduler-stat span {
   font-size: 12px;
   color: var(--color-muted);
@@ -117,7 +121,7 @@
 }
 .scheduler-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
   padding: 20px;
@@ -143,8 +147,20 @@
   flex: 1;
   min-width: 190px;
 }
+.scheduler-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 160px;
+  max-width: 220px;
+}
+.scheduler-filter-group > span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
 .scheduler .scheduler-filter {
-  width: 160px;
+  width: 100%;
 }
 .scheduler-text-button {
   display: inline-flex;

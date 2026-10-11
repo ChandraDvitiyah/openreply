@@ -84,6 +84,12 @@ async function ensureSchema() {
           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY(owner_id) REFERENCES bio_profiles(owner_id) ON DELETE CASCADE
         )`,
+        `CREATE TABLE IF NOT EXISTS bio_page_owners (
+          profile_id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          FOREIGN KEY(profile_id) REFERENCES bio_profiles(owner_id) ON DELETE CASCADE
+        )`,
+        "CREATE INDEX IF NOT EXISTS idx_bio_page_owners_user ON bio_page_owners(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_bio_links_owner_position ON bio_links(owner_id, position)",
         "CREATE INDEX IF NOT EXISTS idx_bio_clicks_link_created ON bio_link_clicks(link_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_bio_clicks_created ON bio_link_clicks(created_at)",
@@ -175,6 +181,36 @@ export async function getBioProfileByOwner(ownerId: string) {
   return result.rows[0] ? profileFromRow(result.rows[0] as Record<string, unknown>) : null;
 }
 
+// Legacy pages retain their original owner key and URL. Additional pages use
+// a separate key, with ownership bound to the authenticated user in this table.
+export async function listBioProfiles(userId: string) {
+  await ensureSchema();
+  const result = await getClient().execute({
+    sql: `SELECT p.* FROM bio_profiles p WHERE p.owner_id = ? OR p.owner_id IN
+      (SELECT profile_id FROM bio_page_owners WHERE user_id = ?)
+      ORDER BY p.created_at ASC, p.owner_id ASC`, args: [userId, userId],
+  });
+  return result.rows.map(row => profileFromRow(row as Record<string, unknown>));
+}
+
+export async function getOwnedBioProfile(userId: string, profileId = userId) {
+  const profiles = await listBioProfiles(userId);
+  return profiles.find(profile => profile.ownerId === profileId) ?? null;
+}
+
+export async function createBioPage(userId: string, input: { slug: string; displayName: string }) {
+  await ensureSchema();
+  const slug = cleanSlug(input.slug);
+  const displayName = input.displayName.trim().slice(0, 80);
+  if (slug.length < 2 || !displayName) throw new Error("Add a name and a public URL with at least 2 letters or numbers.");
+  const profileId = randomUUID();
+  await getClient().batch([
+    { sql: "INSERT INTO bio_profiles (owner_id, slug, display_name) VALUES (?, ?, ?)", args: [profileId, slug, displayName] },
+    { sql: "INSERT INTO bio_page_owners (profile_id, user_id) VALUES (?, ?)", args: [profileId, userId] },
+  ], "write");
+  return (await getBioProfileByOwner(profileId))!;
+}
+
 export async function getPublicBio(slug: string) {
   await ensureSchema();
   const profileResult = await getClient().execute({
@@ -193,8 +229,10 @@ export async function getPublicBio(slug: string) {
   };
 }
 
-export async function listBioLinks(ownerId: string) {
-  await ensureSchema();
+export async function listBioLinks(userId: string, profileId = userId) {
+  const profile = await getOwnedBioProfile(userId, profileId);
+  if (!profile) throw new Error("Page not found.");
+  const ownerId = profile.ownerId;
   const result = await getClient().execute({
     sql: `SELECT l.*, COUNT(c.id) AS click_count
           FROM bio_links l
@@ -212,9 +250,12 @@ export async function listBioLinks(ownerId: string) {
 
 export async function updateBioProfile(
   ownerId: string,
-  input: Pick<BioProfile, "slug" | "displayName" | "bio" | "avatarUrl" | "theme">
+  input: Pick<BioProfile, "slug" | "displayName" | "bio" | "avatarUrl" | "theme">,
+  profileId = ownerId
 ) {
-  await ensureSchema();
+  const profile = await getOwnedBioProfile(ownerId, profileId);
+  if (!profile) throw new Error("Page not found.");
+  ownerId = profile.ownerId;
   const slug = cleanSlug(input.slug);
   if (slug.length < 2) throw new Error("Choose a slug with at least 2 letters or numbers.");
   await getClient().execute({
@@ -228,9 +269,12 @@ export async function updateBioProfile(
 
 export async function createBioLink(
   ownerId: string,
-  input: Pick<BioLink, "title" | "url" | "icon" | "smartAppLink" | "iosUrl" | "androidUrl">
+  input: Pick<BioLink, "title" | "url" | "icon" | "smartAppLink" | "iosUrl" | "androidUrl">,
+  profileId = ownerId
 ) {
-  await ensureSchema();
+  const profile = await getOwnedBioProfile(ownerId, profileId);
+  if (!profile) throw new Error("Page not found.");
+  ownerId = profile.ownerId;
   const positionResult = await getClient().execute({
     sql: "SELECT COALESCE(MAX(position), -1) + 1 AS next_position FROM bio_links WHERE owner_id = ?",
     args: [ownerId],
@@ -258,11 +302,14 @@ export async function createBioLink(
 export async function updateBioLink(ownerId: string, id: string, input: Partial<BioLink>) {
   await ensureSchema();
   const current = await getClient().execute({
-    sql: "SELECT * FROM bio_links WHERE id = ? AND owner_id = ? LIMIT 1",
-    args: [id, ownerId],
+    sql: `SELECT * FROM bio_links WHERE id = ? AND (owner_id = ? OR owner_id IN
+      (SELECT profile_id FROM bio_page_owners WHERE user_id = ?)) LIMIT 1`,
+    args: [id, ownerId, ownerId],
   });
   if (!current.rows[0]) return false;
-  const link = { ...linkFromRow(current.rows[0] as Record<string, unknown>), ...input };
+  const stored = linkFromRow(current.rows[0] as Record<string, unknown>);
+  const link = { ...stored, ...input };
+  ownerId = stored.ownerId;
   await getClient().execute({
     sql: `UPDATE bio_links SET title = ?, url = ?, icon = ?, position = ?, enabled = ?,
           smart_app_link = ?, ios_url = ?, android_url = ?, updated_at = CURRENT_TIMESTAMP
@@ -286,8 +333,9 @@ export async function updateBioLink(ownerId: string, id: string, input: Partial<
 export async function deleteBioLink(ownerId: string, id: string) {
   await ensureSchema();
   const result = await getClient().execute({
-    sql: "DELETE FROM bio_links WHERE id = ? AND owner_id = ?",
-    args: [id, ownerId],
+    sql: `DELETE FROM bio_links WHERE id = ? AND (owner_id = ? OR owner_id IN
+      (SELECT profile_id FROM bio_page_owners WHERE user_id = ?))`,
+    args: [id, ownerId, ownerId],
   });
   return result.rowsAffected > 0;
 }
@@ -348,6 +396,11 @@ export async function getBioPerformance(
     return { pageViews: 0, uniqueVisitors: 0, linkClicks: 0, topLinks: [], daily: [] };
   }
 
+  const pageKeys = await getClient().execute({
+    sql: `SELECT profile_id FROM bio_page_owners WHERE user_id IN (${ownerIds.map(() => "?").join(",")})`,
+    args: ownerIds,
+  });
+  ownerIds = [...new Set([...ownerIds, ...pageKeys.rows.map(row => String(row.profile_id))])];
   const placeholders = ownerIds.map(() => "?").join(",");
   const sinceText = sqliteTimestamp(since);
   const db = getClient();

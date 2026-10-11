@@ -418,6 +418,50 @@ describe("scheduler editing and workspace access", () => {
       mutatePost(otherContext, post.id, { action: "cancel", revision: 0 }),
     ).rejects.toThrow("not found");
   });
+  it("combines status, platform, account, content type and search filters", async () => {
+    await createPost(context, input({ title: "Instagram launch only" }));
+    await createPost(context, input({ kind: "REEL", mediaUrls: ["https://cdn.example.com/reel.mp4"] }));
+    const planned = await createPost(context, input({ platform: "FACEBOOK", accountId: pageId, kind: "TEXT", title: "Launch plans", mediaUrls: [] }));
+    await createPost(context, input({ platform: "FACEBOOK", accountId: pageId, kind: "TEXT", title: "Launch draft", mediaUrls: [], intent: "draft", scheduledAt: null }));
+    const query = new URLSearchParams({ status: "SCHEDULED", platform: "FACEBOOK", accountId: pageId, kind: "TEXT", search: "Launch" });
+    const payload = await (await GET(new NextRequest(`https://kult.test/api/scheduler?${query}`))).json();
+    expect(payload.data.posts.map((post: { id: string }) => post.id)).toEqual([planned.id]);
+    expect(payload.data.counts).toMatchObject({ SCHEDULED: 3, DRAFT: 1 });
+    query.set("search", "Instagram launch only");
+    expect((await (await GET(new NextRequest(`https://kult.test/api/scheduler?${query}`))).json()).data.posts).toEqual([]);
+    const all = await (await GET(new NextRequest("https://kult.test/api/scheduler"))).json();
+    expect(all.data.posts).toHaveLength(4);
+  });
+  it("applies filters before pagination, even when newer unrelated posts fill a page", async () => {
+    const planned = await createPost(context, input({ platform: "FACEBOOK", accountId: pageId, kind: "TEXT", mediaUrls: [] }));
+    await db.scheduledPost.createMany({ data: Array.from({ length: 101 }, (_, index) => ({
+      workspaceId: context.workspaceId, createdById: context.userId,
+      platform: "INSTAGRAM" as const, instagramAccountId: accountId, accountName: "@creator",
+      title: `Unrelated post ${index}`, kind: "IMAGE" as const, status: "SCHEDULED" as const,
+      scheduledAt: new Date(future()), createdAt: new Date(Date.now() + index + 1000),
+    })) });
+    const filtered = await (await GET(new NextRequest(`https://kult.test/api/scheduler?status=SCHEDULED&platform=FACEBOOK&accountId=${pageId}&kind=TEXT`))).json();
+    expect(filtered.data.posts.map((post: { id: string }) => post.id)).toEqual([planned.id]);
+    expect(filtered.data.nextCursor).toBeNull();
+    const first = await (await GET(new NextRequest("https://kult.test/api/scheduler?status=SCHEDULED&platform=INSTAGRAM"))).json();
+    expect(first.data.posts).toHaveLength(100);
+    const second = await (await GET(new NextRequest(`https://kult.test/api/scheduler?status=SCHEDULED&platform=INSTAGRAM&cursor=${first.data.nextCursor}`))).json();
+    expect(second.data.posts).toHaveLength(1);
+    expect(second.data.posts[0].platform).toBe("INSTAGRAM");
+    expect(second.data.nextCursor).toBeNull();
+  });
+  it("keeps account filters scoped to the current workspace", async () => {
+    await createPost(context, input());
+    const other = await db.workspace.create({ data: { ownerId: "scheduler-owner", name: "Other" } });
+    const otherAccount = await db.instagramAccount.create({ data: { workspaceId: other.id, instagramId: "other-ig", username: "other", accessToken: "encrypted-test-token" } });
+    await db.scheduledPost.create({ data: {
+      workspaceId: other.id, createdById: "scheduler-owner", platform: "INSTAGRAM",
+      instagramAccountId: otherAccount.id, accountName: "@other", title: "Private post", kind: "IMAGE", status: "SCHEDULED",
+    } });
+    const payload = await (await GET(new NextRequest(`https://kult.test/api/scheduler?accountId=${otherAccount.id}`))).json();
+    expect(payload.data.posts).toEqual([]);
+    expect(payload.data.counts.SCHEDULED).toBe(1);
+  });
   it("returns unauthorized and invalid JSON responses from actual API handlers", async () => {
     state.context = null;
     expect(

@@ -8,10 +8,15 @@ type StudioLink = BioLink & { clickCount: number };
 export default function LinkStudio({
   initialProfile,
   initialLinks,
+  initialProfiles,
 }: {
   initialProfile: BioProfile;
   initialLinks: StudioLink[];
+  initialProfiles: BioProfile[];
 }) {
+  const [profiles, setProfiles] = useState(initialProfiles);
+  const [newPage, setNewPage] = useState({ displayName: "", slug: "" });
+  const [creatingPage, setCreatingPage] = useState(false);
   const [profile, setProfile] = useState(initialProfile);
   const [links, setLinks] = useState(initialLinks);
   const [message, setMessage] = useState("");
@@ -26,37 +31,46 @@ export default function LinkStudio({
 
   const publicUrl = useMemo(() => `/u/${profile.slug}`, [profile.slug]);
 
-  async function refresh() {
-    const response = await fetch("/api/bio");
+  function runAction(action: () => Promise<unknown>) {
+    startTransition(async () => {
+      try { await action(); }
+      catch (error) { setMessage(error instanceof Error ? error.message : "Could not save changes. Please try again."); }
+    });
+  }
+
+  async function refresh(profileId = profile.ownerId) {
+    const response = await fetch(`/api/bio?profileId=${encodeURIComponent(profileId)}`, { cache: "no-store" });
     const data = await response.json();
     if (response.ok) {
       setProfile(data.profile);
       setLinks(data.links);
-    }
+      setProfiles(data.profiles);
+    } else throw new Error(data.error ?? "Could not load page.");
   }
 
   function saveProfile() {
-    startTransition(async () => {
+    runAction(async () => {
       setMessage("");
       const response = await fetch("/api/bio", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({ ...profile, profileId: profile.ownerId }),
       });
       const data = await response.json();
       if (!response.ok) return setMessage(data.error ?? "Could not save.");
       setProfile(data.profile);
+      setProfiles(data.profiles);
       setMessage("Profile saved.");
     });
   }
 
   function addLink() {
-    startTransition(async () => {
+    runAction(async () => {
       setMessage("");
       const response = await fetch("/api/bio", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...newLink, icon: "arrow" }),
+        body: JSON.stringify({ ...newLink, profileId: profile.ownerId, icon: "arrow" }),
       });
       const data = await response.json();
       if (!response.ok) return setMessage(data.error ?? "Could not add link.");
@@ -67,19 +81,21 @@ export default function LinkStudio({
   }
 
   function toggleLink(link: StudioLink) {
-    startTransition(async () => {
-      await fetch(`/api/bio/links/${link.id}`, {
+    runAction(async () => {
+      const response = await fetch(`/api/bio/links/${link.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ enabled: !link.enabled }),
       });
+      if (!response.ok) return setMessage((await response.json()).error ?? "Could not update link.");
       await refresh();
     });
   }
 
   function removeLink(id: string) {
-    startTransition(async () => {
-      await fetch(`/api/bio/links/${id}`, { method: "DELETE" });
+    runAction(async () => {
+      const response = await fetch(`/api/bio/links/${id}`, { method: "DELETE" });
+      if (!response.ok) return setMessage((await response.json()).error ?? "Could not remove link.");
       await refresh();
       setMessage("Link removed.");
     });
@@ -88,6 +104,42 @@ export default function LinkStudio({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_390px]">
       <div className="space-y-6">
+        <section className="rounded-2xl border border-border bg-surface p-6">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-0 flex-1 space-y-2 text-sm">
+              <span className="text-muted">Public pages</span>
+              <select disabled={isPending} value={profile.ownerId} onChange={event => {
+                const id = event.target.value;
+                runAction(async () => {
+                  try { await refresh(id); setMessage(""); setNewLink({ title: "", url: "", smartAppLink: false, iosUrl: "", androidUrl: "" }); }
+                  catch (error) { setMessage(error instanceof Error ? error.message : "Could not load page."); }
+                });
+              }} className="w-full rounded-xl border border-border bg-background px-4 py-3">
+                {profiles.map(page => <option key={page.ownerId} value={page.ownerId}>{page.displayName} · /u/{page.slug}</option>)}
+              </select>
+            </label>
+            <button disabled={isPending} onClick={() => setCreatingPage(!creatingPage)} className="rounded-full border border-border px-4 py-3 text-sm">New page</button>
+          </div>
+          {creatingPage && <form className="mt-5 space-y-4" onSubmit={event => {
+            event.preventDefault();
+            runAction(async () => {
+              try {
+                const response = await fetch("/api/bio", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "createPage", ...newPage }) });
+                const body = await response.json();
+                if (!response.ok) return setMessage(body.error ?? "Could not create page.");
+                setProfiles(body.profiles); setProfile(body.profile); setLinks([]);
+                setNewLink({ title: "", url: "", smartAppLink: false, iosUrl: "", androidUrl: "" });
+                setCreatingPage(false); setNewPage({ displayName: "", slug: "" }); setMessage("Page created.");
+              } catch { setMessage("Could not create page. Please try again."); }
+            });
+          }}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm"><span>Page name</span><input required maxLength={80} value={newPage.displayName} onChange={event => setNewPage({ ...newPage, displayName: event.target.value })} className="w-full rounded-xl border border-border bg-background px-4 py-3" /></label>
+              <label className="space-y-2 text-sm"><span>Public URL · /u/</span><input required minLength={2} maxLength={36} value={newPage.slug} onChange={event => setNewPage({ ...newPage, slug: event.target.value })} className="w-full rounded-xl border border-border bg-background px-4 py-3" /></label>
+            </div>
+            <button disabled={isPending} className="button-primary disabled:opacity-60">Create page</button>
+          </form>}
+        </section>
         <section className="rounded-[1.5rem] border border-border bg-surface p-6 sm:p-8">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
@@ -164,8 +216,8 @@ export default function LinkStudio({
                 <p className="truncate text-sm text-muted">{link.url}</p>
               </div>
               <p className="hidden text-sm text-muted sm:block">{link.clickCount} clicks</p>
-              <button onClick={() => toggleLink(link)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${link.enabled ? "bg-success/10 text-success" : "bg-border text-muted"}`}>{link.enabled ? "Live" : "Hidden"}</button>
-              <button aria-label={`Delete ${link.title}`} onClick={() => removeLink(link.id)} className="px-2 text-muted hover:text-error">×</button>
+              <button disabled={isPending} onClick={() => toggleLink(link)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${link.enabled ? "bg-success/10 text-success" : "bg-border text-muted"}`}>{link.enabled ? "Live" : "Hidden"}</button>
+              <button aria-label={`Delete ${link.title}`} disabled={isPending} onClick={() => removeLink(link.id)} className="px-2 text-muted hover:text-error">×</button>
             </article>
           ))}
           {links.length === 0 && <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted">Your first link will appear here.</div>}

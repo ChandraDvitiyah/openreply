@@ -17,8 +17,11 @@ consumer Instagram accounts are not supported. Facebook Pages need the
 at delivery; disconnected/expired accounts receive actionable errors.
 
 - Drafts, publish now, future scheduling, editing/rescheduling, cancellation,
-  duplication into a draft, search, status filters, paginated history, and a
-  monthly calendar with per-day creation and filtering.
+  duplication into a draft, search, status/platform/account/content-type filters,
+  paginated history, and a monthly calendar with per-day creation and filtering.
+  The Schedule page defaults to Scheduled posts in both views. Reset filters
+  restores that default; All statuses includes drafts and publishing history.
+  Filters are applied before pagination, and changing them resets the cursor.
 - Users can upload files or paste public HTTPS URLs. The composer includes file
   size/type validation, upload progress/cancellation, media ordering/removal,
   per-item preview navigation, and native platform metadata. Stories show a

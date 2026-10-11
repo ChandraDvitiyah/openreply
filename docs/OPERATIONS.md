@@ -5,7 +5,7 @@ written so that a future maintainer or coding agent can recover from a new
 computer, a lost SSH key, or a deleted worker VM with the Git repository and
 access to the service accounts. It intentionally contains no secret values.
 
-Last verified: **9 October 2026**.
+Last verified: **11 October 2026**.
 
 ## 1. Read this first
 
@@ -936,6 +936,18 @@ profile identity and secrets stay out of diagnostics. Validation passed 296
 tests, typecheck, lint and production build. Compare the actual OAuth token
 with the owner's working Meta API token before changing provider settings.
 
+Latest production verification: commit `1e64de4e08520faee62041ed745354fbfecd8f9f`
+serves `https://kultreply.vercel.app` through READY deployment
+`dpl_DVkvrgbAK3JQBz1jaJ4sYdiruna3`; Oracle is at the same commit and its
+worker was restarted/saved. Health and the fresh worker heartbeat are OK.
+The live `alexgott.creates` connection remains unresolved: a flat 210-character
+Instagram business token was returned, both exchange methods failed, and the
+short-token profile check returned Meta error 100. Facebook introspection
+returned error 2, so issuing-app/validity information was unavailable.
+The account is a professional creator; its active Kult-IG consent shows all
+five requested permissions enabled. Compare the account and app used in the
+working Meta API test with this OAuth flow; no provider settings were changed.
+
 ## MCP tool discovery compatibility — 9 October 2026
 
 ChatGPT reported no available tools while anonymous MCP initialization and
@@ -1010,6 +1022,19 @@ loaded all 47 tools and passed nine read operations against the fixed production
 build with JSON-only Accept headers. The isolated release passed 318 tests,
 typecheck, production build and lint with zero errors and the same three warnings.
 
+Live verification: commit `afe596d2cd0f32d4cbcb9b2e84fffff49d01c4c3` is
+served by READY production deployment `dpl_2tnhFG83wX9FnTZSKhQJuyiGYNk4` at
+`https://kultreply.vercel.app`. The exact real OAuth token that returned 401
+before release now discovers all 47 tools and passes nine read operations.
+Real refresh-token exchange preserves the resource audience and discovers all
+47 tools again; connected-profile and workspace calls also pass after refresh.
+Oracle is at the same commit, its existing worker was restarted/saved, and
+database/queue/worker health is OK with a fresh heartbeat. Only the isolated
+test user's three database rows were removed; its refresh grant was revoked,
+its Clerk account deleted and its private credentials removed. Removed-account
+requests return 403. The owner's actual ChatGPT app must refresh its catalogue;
+ChatGPT UI success has not been claimed as verified.
+
 ## Direct MCP media ingestion — 9 October 2026
 
 MCP now exposes 49 tools. `upload_media_file` declares OpenAI's native file
@@ -1037,6 +1062,21 @@ publication is used. Live verification must check stored download checksums
 for both an inline image and a multipart video, then remove all test object
 versions, the temporary workspace, OAuth grant and Clerk test account.
 The actual ChatGPT attachment UI is verified separately by the owner.
+
+Live verification: commit `e266b645da8435ac2533668ff651e0325191a3dc` is
+served by READY Vercel production deployment `dpl_2RdfVydqSZAE13USZ39MtTzcWspW`.
+The canonical MCP URL exposes 49 tools and the native `openai/fileParams`
+metadata. Real Clerk OAuth, including refresh, discovers all 49 tools and
+preserves connected profile/workspace access. A valid 2,110,126-byte JPEG
+passed direct base64 ingestion and native-file ingestion with MIME omitted.
+A valid 12,765,406-byte MP4 passed native-file ingestion through multipart
+storage. Downloading each private stored object verified the exact original
+byte size and SHA-256. All four test objects and their versions were deleted
+in both the local-production-build and live verification runs. Oracle is on
+the same release, and database, queue and worker health are OK. The isolated
+account's three rows were removed, its refresh grant revoked, its Clerk
+account deleted and its private credentials erased; removed-account access
+returns 403. The owner's ChatGPT attachment UI remains unverified.
 
 ## Resumable MCP byte uploads — 9 October 2026
 
@@ -1071,5 +1111,46 @@ download checksum before and after release, then remove all test object
 versions, session/cleanup rows, test workspace/account and temporary credentials.
 The owner's ChatGPT UI remains a separate verification step.
 
+Live verification: commit `b3c09770dd039faa346d4031d097e59c0253420b`
+is served by READY Vercel production deployment `dpl_B1nMj2j9v5ygcZsEv2gRsohrf14X`.
+The canonical MCP URL exposes 52 OAuth-protected tools, including resumable
+byte uploads and the unchanged native ChatGPT file metadata. An actual
+12,765,406-byte MP4 was sent entirely through four base64 byte-upload calls,
+with full 3,300,000-byte chunks accepted by the live Vercel endpoint. Identical
+chunk retry, durable resume, completion retry and abort all passed. Private
+storage download verified the exact original size and SHA-256 before and
+after deployment. Real OAuth refresh still discovers 52 tools and preserves
+connected profile/workspace access. Oracle is at the same commit with its
+Prisma client regenerated; database/queue/worker health is OK. All test object
+versions and session/cleanup rows were removed, followed by the isolated
+account's three rows, refresh grant, Clerk account and private credentials.
+Removed-account requests return 403. The 1 GiB ceiling was validated without
+allocating or transferring a full 1 GiB fixture; live transfer proof is the
+12,765,406-byte video. The owner's ChatGPT UI remains unverified.
+
 The official service documentation wins if a dashboard label or procedure has
 changed. Update this handbook after confirming the new workflow.
+
+## Shared analytics, Link Studio pages and Schedule filters — 11 October 2026
+
+Overview and Views now use the same stored performance snapshots and shared
+refresh cache. Snapshots include per-video details; Views no longer fetches
+Meta separately or imposes its old 50-video cutoff. Refreshing either page
+invalidates both pages and every Views filter for the selected reporting window.
+The existing worker and cron refresh this same pipeline. Views identifies the
+Meta source and last refresh; failed initial loads display unavailable values.
+Facebook Page totals can still differ from video-only totals by definition.
+
+Link Studio supports multiple independent public pages with their own URLs,
+profiles and links. The additive `bio_page_owners` table binds additional page
+keys to their authenticated owner, preserving legacy URLs, link IDs and history.
+The existing MCP bio tools accept page selection and creation; tool count
+remains 52. Schedule defaults to Scheduled and supports status, platform,
+account and content-type filters with search, calendar and pagination.
+
+The additive migration `20261011000000_shared_performance_link_pages` adds
+the snapshot JSON column and page ownership table. No credentials, encryption
+keys, dependencies or provider settings change. Production health was OK and
+a fresh encrypted Turso export was restored with integrity OK and all 31
+original table row counts preserved through a migration rehearsal. Release
+validation passed 379 tests, TypeScript, ESLint and a production build.

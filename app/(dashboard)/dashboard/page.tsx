@@ -14,7 +14,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { useDashboardDataCache } from "@/components/dashboard-data-cache";
+import { useDashboardDataCache, usePerformanceRevision } from "@/components/dashboard-data-cache";
 import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 
 type DistributionItem = { platform: string; value: number; percent: number };
@@ -186,6 +186,7 @@ export default function DashboardPage() {
     dataCache.get<DashboardPerformance>("performance:30")
   );
   const [period, setPeriod] = useState(30);
+  const revision = usePerformanceRevision(period);
   const [loading, setLoading] = useState(() => !dataCache.get("performance:30"));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,22 +203,17 @@ export default function DashboardPage() {
     return data;
   }, [dataCache]);
 
-  const refreshMeta = useCallback(async (days: number) => {
+  const refreshMeta = useCallback(async (days: number, force = false) => {
     const refreshId = ++refreshSequence.current;
     setRefreshing(true);
     try {
-      const response = await fetch(`/api/dashboard/performance/sync?days=${days}`, {
-        method: "POST",
-        cache: "no-store",
-      });
-      const body = await response.json();
-      if (!response.ok || !body.success) throw new Error(body.error ?? "Could not refresh Meta insights");
+      const result = await dataCache.syncPerformance(days, force);
       const refreshedStats = await fetchStats(days);
       if (activePeriod.current === days) {
         setStats(refreshedStats);
         setError(
-          body.data.failed > 0
-            ? `${body.data.failed} account${body.data.failed === 1 ? "" : "s"} could not be refreshed. Reconnect it in Settings if this continues.`
+          result.failed > 0
+            ? `${result.failed} account${result.failed === 1 ? "" : "s"} could not be refreshed. Reconnect it in Settings if this continues.`
             : null,
         );
       }
@@ -228,7 +224,7 @@ export default function DashboardPage() {
     } finally {
       if (refreshSequence.current === refreshId) setRefreshing(false);
     }
-  }, [fetchStats]);
+  }, [fetchStats, dataCache]);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,9 +232,9 @@ export default function DashboardPage() {
       .then(async (data) => {
         if (cancelled) return;
         setStats(data);
-        setError(null);
-        // Stored snapshots make the page appear quickly; a live sync on every
-        // visit then replaces them with current Meta totals.
+        const failed = dataCache.syncResult(period)?.failed ?? 0;
+        setError(failed > 0 ? `${failed} account(s) could not be refreshed. Reconnect in Settings if this continues.` : null);
+        // Both analytics pages share one refresh per window and cached results.
         if (data.connectedAccounts > 0 && !autoSynced.current.has(period)) {
           autoSynced.current.add(period);
           await refreshMeta(period);
@@ -251,7 +247,7 @@ export default function DashboardPage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [fetchStats, period, refreshMeta]);
+  }, [fetchStats, period, refreshMeta, revision]);
 
   if (loading && !stats) {
     return <DashboardLoadingSkeleton />;
@@ -307,7 +303,7 @@ export default function DashboardPage() {
           </select>
           <button
             type="button"
-            onClick={() => refreshMeta(period)}
+            onClick={() => refreshMeta(period, true)}
             disabled={refreshing || stats.connectedAccounts === 0}
             className="button-secondary gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             title="Refresh Meta data"

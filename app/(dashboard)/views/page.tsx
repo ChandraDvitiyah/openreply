@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   Camera,
@@ -10,12 +10,13 @@ import {
   MessageCircle,
   Play,
   Share2,
+  RefreshCw,
 } from "lucide-react";
 import type {
   VideoAnalyticsPost,
   ViewsAnalyticsResponse,
-} from "@/app/api/views/route";
-import { useDashboardDataCache } from "@/components/dashboard-data-cache";
+} from "@/lib/performance/types";
+import { useDashboardDataCache, usePerformanceRevision } from "@/components/dashboard-data-cache";
 import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
 
 type PlatformFilter = "ALL" | "INSTAGRAM" | "FACEBOOK";
@@ -50,7 +51,7 @@ function MetricCard({
   icon: Icon,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   icon: typeof Eye;
 }) {
   return (
@@ -119,6 +120,9 @@ export default function ViewsPage() {
   const [platform, setPlatform] = useState<PlatformFilter>("ALL");
   const [accountId, setAccountId] = useState("all");
   const [days, setDays] = useState(30);
+  const revision = usePerformanceRevision(days);
+  const autoSynced = useRef(new Set<number>());
+  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,9 +138,21 @@ export default function ViewsPage() {
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok || !body.success) throw new Error(body.error ?? "Could not load video analytics");
+        if (controller.signal.aborted) return;
         dataCache.set(cacheKey, body.data);
         setData(body.data);
-        setError(null);
+        const failed = dataCache.syncResult(days)?.failed ?? 0;
+        setError(failed > 0 ? `${failed} account(s) could not be refreshed. Reconnect in Settings if this continues.` : null);
+        if (body.data.accounts.length > 0 && body.data.stale && !autoSynced.current.has(days)) {
+          autoSynced.current.add(days);
+          setRefreshing(true);
+          try {
+            const result = await dataCache.syncPerformance(days);
+            if (!controller.signal.aborted && result.failed > 0) setError(`${result.failed} account(s) could not be refreshed. Reconnect in Settings if this continues.`);
+          } catch (syncError) {
+            if (!controller.signal.aborted) setError(syncError instanceof Error ? syncError.message : "Could not refresh Meta insights");
+          } finally { setRefreshing(false); }
+        }
       })
       .catch((loadError) => {
         if (loadError instanceof Error && loadError.name === "AbortError") return;
@@ -146,7 +162,7 @@ export default function ViewsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [platform, accountId, days, dataCache]);
+  }, [platform, accountId, days, dataCache, revision]);
 
   const visibleAccounts = useMemo(
     () => data?.accounts.filter((account) => platform === "ALL" || account.platform === platform) ?? [],
@@ -225,8 +241,19 @@ export default function ViewsPage() {
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
           </select>
+          <button type="button" disabled={refreshing} onClick={async () => {
+            setRefreshing(true);
+            try {
+              const result = await dataCache.syncPerformance(days, true);
+              setError(result.failed ? `${result.failed} account(s) could not be refreshed.` : null);
+            } catch (syncError) { setError(syncError instanceof Error ? syncError.message : "Could not refresh Meta insights"); }
+            finally { setRefreshing(false); }
+          }} className="flex h-9 items-center gap-2 rounded-full border border-[#e6e6e3] bg-white px-3 text-[13px] disabled:opacity-60">
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />{refreshing ? "Refreshing…" : "Refresh metrics"}
+          </button>
         </div>
       </header>
+      {data?.lastSyncedAt && <p className="text-[12px] text-[#9e9e9e]">Meta insights · Updated {new Date(data.lastSyncedAt).toLocaleString()}{data.stale ? " · Refresh needed" : ""}</p>}
 
       {error && (
         <div className="rounded-xl border border-[#e5b8b3] bg-[#fff4f2] px-4 py-3 text-[13px] text-error">{error}</div>
@@ -239,12 +266,12 @@ export default function ViewsPage() {
       ) : null}
 
       <section aria-label="Video totals" className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Videos" value={data?.totals.videos ?? 0} icon={Play} />
-        <MetricCard label="Views" value={data?.totals.views ?? 0} icon={Eye} />
-        <MetricCard label="Likes / reactions" value={data?.totals.likes ?? 0} icon={Heart} />
-        <MetricCard label="Comments" value={data?.totals.comments ?? 0} icon={MessageCircle} />
-        <MetricCard label="Shares" value={data?.totals.shares ?? 0} icon={Share2} />
-        <MetricCard label="Interactions" value={data?.totals.interactions ?? 0} icon={BarChart3} />
+        <MetricCard label="Videos" value={data?.totals.videos ?? null} icon={Play} />
+        <MetricCard label="Views" value={data?.totals.views ?? null} icon={Eye} />
+        <MetricCard label="Likes / reactions" value={data?.totals.likes ?? null} icon={Heart} />
+        <MetricCard label="Comments" value={data?.totals.comments ?? null} icon={MessageCircle} />
+        <MetricCard label="Shares" value={data?.totals.shares ?? null} icon={Share2} />
+        <MetricCard label="Interactions" value={data?.totals.interactions ?? null} icon={BarChart3} />
       </section>
 
       <section className="grid gap-3 md:grid-cols-2">

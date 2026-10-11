@@ -8,7 +8,9 @@ import {
 import {
   getFacebookPageInsightTotal,
   getFacebookPagePosts,
+  getFacebookPostViews,
 } from "@/lib/meta/facebook";
+import type { VideoAnalyticsPost } from "./types";
 import { decryptToken } from "@/lib/meta/oauth";
 
 export const PERFORMANCE_PERIODS = [7, 30, 90] as const;
@@ -31,6 +33,7 @@ type SnapshotMetrics = {
   shares: number | null;
   interactions: number | null;
   insightsAvailable: boolean;
+  videoPosts: VideoAnalyticsPost[];
 };
 
 async function mapWithConcurrency<T, R>(
@@ -52,13 +55,19 @@ async function mapWithConcurrency<T, R>(
   return output;
 }
 
+function postTitle(value: string | undefined, fallback: string) {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 140) : fallback;
+}
+
 function isVideoLike(media: InstagramMedia) {
   return media.media_product_type === "REELS" || media.media_type === "VIDEO";
 }
 
 async function getInstagramMetrics(
   encryptedToken: string,
-  since: Date
+  since: Date,
+  account: { id: string; username: string }
 ): Promise<SnapshotMetrics> {
   const accessToken = decryptToken(encryptedToken);
   const recentMedia = await getUserMediaSince(accessToken, since, 250);
@@ -93,6 +102,15 @@ async function getInstagramMetrics(
         (insight?.total_interactions ??
           likes + comments + (insight?.saved ?? 0) + (insight?.shares ?? 0));
       total.insightsAvailable ||= Boolean(insight) && !permissionDenied;
+      if (isVideoLike(media)) total.videoPosts.push({
+        id: media.id, platform: "INSTAGRAM", accountId: account.id,
+        accountName: `@${account.username}`, title: postTitle(media.caption, "Instagram video"),
+        permalink: media.permalink ?? null, thumbnailUrl: media.thumbnail_url ?? media.media_url ?? null,
+        mediaType: media.media_product_type ?? media.media_type, publishedAt: media.timestamp,
+        views: insight?.views ?? null, reach: insight?.reach ?? null, likes, comments,
+        saves: insight?.saved ?? null, shares: insight?.shares ?? 0,
+        interactions: insight?.total_interactions ?? likes + comments + (insight?.saved ?? 0) + (insight?.shares ?? 0),
+      });
       return total;
     },
     {
@@ -105,6 +123,7 @@ async function getInstagramMetrics(
       shares: 0,
       interactions: 0,
       insightsAvailable: false,
+      videoPosts: [],
     }
   );
 }
@@ -113,7 +132,8 @@ async function getFacebookMetrics(
   pageId: string,
   encryptedToken: string,
   since: Date,
-  until: Date
+  until: Date,
+  account: { id: string; name: string }
 ): Promise<SnapshotMetrics> {
   const accessToken = decryptToken(encryptedToken);
   const [posts, views, reach, pageEngagements] = await Promise.all([
@@ -135,6 +155,24 @@ async function getFacebookMetrics(
     ),
   ]);
 
+  const videos = posts.filter(post => (post.attachments?.data ?? []).some(
+    attachment => /video|reel/i.test(`${attachment.media_type ?? ""} ${attachment.type ?? ""}`)
+  ));
+  const videoPosts = await mapWithConcurrency(videos, 6, async post => {
+    const attachment = post.attachments?.data?.[0];
+    const likes = post.reactions?.summary?.total_count ?? 0;
+    const comments = post.comments?.summary?.total_count ?? 0;
+    const shares = post.shares?.count ?? 0;
+    return {
+      id: post.id, platform: "FACEBOOK" as const, accountId: account.id, accountName: account.name,
+      title: postTitle(post.message ?? attachment?.title, "Facebook video"),
+      permalink: post.permalink_url ?? attachment?.url ?? attachment?.target?.url ?? null,
+      thumbnailUrl: post.full_picture ?? attachment?.media?.image?.src ?? null,
+      mediaType: /reel/i.test(attachment?.type ?? "") ? "REEL" : "VIDEO", publishedAt: post.created_time,
+      views: await getFacebookPostViews(post.id, accessToken), reach: null, likes, comments,
+      saves: null, shares, interactions: likes + comments + shares,
+    };
+  });
   const postTotals = posts.reduce(
     (total, post) => {
       total.likes += post.reactions?.summary?.total_count ?? 0;
@@ -147,6 +185,7 @@ async function getFacebookMetrics(
 
   return {
     contentCount: posts.length,
+    videoPosts,
     views,
     reach,
     likes: postTotals.likes,
@@ -176,7 +215,7 @@ export async function syncWorkspacePerformance(
 
   const jobs = [
     ...instagramAccounts.map(async (account) => {
-      const metrics = await getInstagramMetrics(account.accessToken, since);
+      const metrics = await getInstagramMetrics(account.accessToken, since, account);
       await prisma.socialPerformanceSnapshot.upsert({
         where: {
           platform_accountInternalId_periodDays_capturedDate: {
@@ -205,7 +244,8 @@ export async function syncWorkspacePerformance(
         page.pageId,
         page.accessToken,
         since,
-        until
+        until,
+        page
       );
       await prisma.socialPerformanceSnapshot.upsert({
         where: {
@@ -250,13 +290,19 @@ export async function getLatestPerformanceSnapshots(
   const rows = await prisma.socialPerformanceSnapshot.findMany({
     where: { workspaceId, periodDays },
     orderBy: { capturedAt: "desc" },
+    select: { id: true, platform: true, accountInternalId: true },
   });
   const latest = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
     const key = `${row.platform}:${row.accountInternalId}`;
     if (!latest.has(key)) latest.set(key, row);
   }
-  return [...latest.values()];
+  // Load post payloads only for the chosen snapshots, avoiding every historical
+  // day's video details on each dashboard read.
+  return prisma.socialPerformanceSnapshot.findMany({
+    where: { workspaceId, periodDays, id: { in: [...latest.values()].map(row => row.id) } },
+    orderBy: { capturedAt: "desc" },
+  });
 }
 
 export async function syncAllWorkspacePerformance(
