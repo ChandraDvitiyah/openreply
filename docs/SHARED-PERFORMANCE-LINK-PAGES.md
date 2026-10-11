@@ -44,3 +44,22 @@ Overview and Views share the same capture timestamp and social totals.
 The live editor browser flow was not exercised because no authenticated
 browser session was available; page ownership and links passed isolated
 SQLite integration tests.
+
+## Views graph
+
+Views includes a graph immediately above Video performance. It sums the saved
+lifetime views of videos by their publication date in Asia/Kolkata, using
+00:00–24:00 IST buckets. The graph uses the same selected account, platform
+and reporting window as the table; no extra Meta requests are made for it.
+The reporting window is rolling, so it can intersect one additional calendar
+day, with partial days at both edges. Tooltips show the date, 24-hour IST
+interval, current view total and number of videos published. An expandable
+daily table provides the same data accessibly. Missing/partial insights are
+identified rather than being presented as genuine zero.
+
+This graph measures views by publish day, not views earned during that day.
+A read-only live Meta probe confirmed that account daily totals round to
+provider reporting boundaries: two half-day IST queries returned an empty
+result and the same full-day total respectively. Relabeling those totals as
+IST days would be inaccurate. Media lifetime totals cannot establish the
+actual date on which a view occurred.

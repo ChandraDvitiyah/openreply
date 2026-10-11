@@ -1,5 +1,12 @@
 export type Platform = "INSTAGRAM" | "FACEBOOK";
 
+export type DailyViewsPoint = {
+  date: string;
+  views: number | null;
+  videos: number;
+  partial: boolean;
+};
+
 export type VideoAnalyticsPost = {
   id: string;
   platform: Platform;
@@ -43,6 +50,7 @@ export type ViewsAnalyticsResponse = {
     interactions: number;
   }>;
   posts: VideoAnalyticsPost[];
+  dailyViews: DailyViewsPoint[];
   unavailableAccounts: string[];
 };
 

@@ -23,6 +23,7 @@ describe("Views shared performance source", () => {
     const response = await GET(new NextRequest("http://localhost/api/views?days=7"));
     const { data } = await response.json();
     expect(data.totals).toMatchObject({ videos: 2, views: 84, interactions: 12 });
+    expect(data.dailyViews.reduce((sum: number, day: { views: number | null }) => sum + (day.views ?? 0), 0)).toBe(84);
     expect(data.stale).toBe(false);
     expect(mocks.snapshots).toHaveBeenCalledWith("workspace", 7);
     expect(mocks.media).not.toHaveBeenCalled();
@@ -35,6 +36,7 @@ describe("Views shared performance source", () => {
     const { data } = await (await GET(new NextRequest("http://localhost/api/views?platform=INSTAGRAM&accountId=ig"))).json();
     expect(data.posts.map((p: { id: string }) => p.id)).toEqual(["reel"]);
     expect(data.totals.views).toBe(42);
+    expect(data.dailyViews.reduce((sum: number, day: { videos: number }) => sum + day.videos, 0)).toBe(1);
   });
   it("marks legacy or missing snapshots for refresh", async () => {
     mocks.snapshots.mockResolvedValue([{ platform: "INSTAGRAM", accountInternalId: "ig", capturedAt: new Date(), insightsAvailable: true, videoPosts: null }]);
@@ -43,6 +45,7 @@ describe("Views shared performance source", () => {
     expect(data.lastSyncedAt).toBeNull();
     expect(data.unavailableAccounts).toEqual(["Page"]);
     expect(data.posts).toEqual([]);
+    expect(data.dailyViews.every((day: { views: number | null }) => day.views === null)).toBe(true);
   });
   it("rejects unauthenticated access before reading data", async () => {
     mocks.workspace.mockResolvedValue(null);

@@ -3,6 +3,7 @@ import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import { getLatestPerformanceSnapshots, normalizePerformancePeriod } from "@/lib/performance/social-sync";
 import type { Platform, VideoAnalyticsPost, ViewsAnalyticsResponse } from "@/lib/performance/types";
+import { getViewsByPublishDay } from "@/lib/performance/daily-views";
 
 export async function GET(request: NextRequest) {
   const workspaceId = await getCurrentWorkspaceId();
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
     totals,
     platforms,
     posts,
+    dailyViews: getViewsByPublishDay(posts, periodDays, new Date(lastSyncedAt ?? Date.now()), selectedSnapshots.every(snapshot => Array.isArray(snapshot?.videoPosts))),
     unavailableAccounts,
   };
   return NextResponse.json(

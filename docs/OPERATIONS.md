@@ -1180,3 +1180,27 @@ explicit Prisma generation. No dependency versions changed. The verified
 encrypted backup is retained outside the Git repository under the parent
 workspace’s `.production-backups/2026-10-11-shared-analytics` directory,
 with directory mode 700 and files mode 600.
+
+## 25. IST publication-day views graph — 11 October 2026
+
+Views now displays an area graph above Video performance, derived from the
+same stored video snapshot and account/platform/period selection. It groups
+current lifetime video views by publication day in IST (UTC+05:30), with each
+calendar day running from 00:00 to 24:00. The title and description explicitly
+identify publication-day totals; this is not a chart of views earned that day.
+Live Meta probes rounded requested IST daily boundaries to provider reporting
+days, so exact historical views earned per IST day cannot be inferred from
+the existing lifetime counters. The owner selected publication day in IST.
+
+The graph fills empty dates, preserves unavailable/partial metrics, and
+includes every selected video even when account snapshots have different
+ages. It provides hover details and an expandable accessible daily table.
+The selected rolling period can intersect partial calendar days at its edges.
+No schema, dependency, credentials or worker scheduling changes are required.
+
+Validation passed 383 tests across 34 files, production build/typecheck, lint
+and desktop/mobile chart rendering with saved production totals. Production
+health was OK before release. A fresh encrypted Turso export was restored
+with integrity OK and matching counts for all 32 tables; it is retained outside
+Git under `.production-backups/2026-10-11-daily-views` in the parent workspace,
+with directory mode 700 and file mode 600. Plaintext restore files were removed.

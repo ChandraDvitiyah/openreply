@@ -18,6 +18,7 @@ import type {
 } from "@/lib/performance/types";
 import { useDashboardDataCache, usePerformanceRevision } from "@/components/dashboard-data-cache";
 import { DashboardLoadingSkeleton } from "@/components/dashboard-loading-skeleton";
+import { ViewsDailyChart } from "@/components/views-daily-chart";
 
 type PlatformFilter = "ALL" | "INSTAGRAM" | "FACEBOOK";
 
@@ -304,6 +305,13 @@ export default function ViewsPage() {
           </article>
         ))}
       </section>
+
+      <ViewsDailyChart
+        points={data?.dailyViews ?? []}
+        title="Views by publish day"
+        description="Current total views of videos published each day in IST (UTC+05:30). The selected period can include partial days at its edges."
+        loading={loading || refreshing}
+      />
 
       <section className="panel overflow-hidden rounded-2xl">
         <div className="flex items-center justify-between border-b border-[#e6e6e3] px-5 py-4">
