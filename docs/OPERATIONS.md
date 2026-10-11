@@ -1204,3 +1204,16 @@ health was OK before release. A fresh encrypted Turso export was restored
 with integrity OK and matching counts for all 32 tables; it is retained outside
 Git under `.production-backups/2026-10-11-daily-views` in the parent workspace,
 with directory mode 700 and file mode 600. Plaintext restore files were removed.
+
+Live verification: code commit `1b9bae016ff2081063db6371696f58b55ecf47e1`
+is served at the canonical URL by READY Vercel deployment
+`dpl_4C9pCzRGiEacvCTUab3U9q89VpyG`. Authenticated 30-day Views returned
+31 IST dates, summing to all 14,765 views and 100 videos in the same snapshot.
+The account/platform-filtered 7-day graph also matched its stored totals;
+Facebook selection with no connected page returned an empty cohort correctly.
+Oracle was fast-forwarded to the same code commit, and the existing PM2 worker
+was restarted and saved. Its environment remains mode 600. Post-release health
+confirmed database and queue OK, zero failed jobs, and a fresh healthy worker
+start at `2026-10-11T11:50:51.298Z`. An authenticated browser session was not
+available; chart interactions were checked in a local component preview with
+the saved production totals, while live filtered API responses were verified.
