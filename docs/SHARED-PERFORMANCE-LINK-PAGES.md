@@ -39,4 +39,8 @@ is recorded in `OPERATIONS.md`.
 Validation: 379 tests pass, TypeScript and ESLint pass, and the production build
 succeeds. The additive migration was applied to a restored production backup:
 SQLite integrity is OK and all 31 existing tables retain their row counts.
-Live Meta refresh and authenticated browser flows remain production smoke checks.
+Live Meta refresh and authenticated API reads passed after deployment.
+Overview and Views share the same capture timestamp and social totals.
+The live editor browser flow was not exercised because no authenticated
+browser session was available; page ownership and links passed isolated
+SQLite integration tests.

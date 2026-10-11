@@ -1154,3 +1154,29 @@ keys, dependencies or provider settings change. Production health was OK and
 a fresh encrypted Turso export was restored with integrity OK and all 31
 original table row counts preserved through a migration rehearsal. Release
 validation passed 379 tests, TypeScript, ESLint and a production build.
+
+Live web verification: code commit `2363324eae6589aa163984a4acf8d4bf8087f205`
+was deployed to the canonical URL through READY Vercel deployment
+`dpl_9KeXxVLCUfSywSaGypsVQgmd8dsq`. The additive migration applied
+successfully. Authenticated Meta refreshes for 7, 30 and 90 days each refreshed
+the connected account with zero failures. Overview and Views returned the same
+30-day capture timestamp and all social totals: 100 videos and 14,710 views.
+The 90-day Views snapshot contains 172 videos. Schedule returned 21 posts,
+all Scheduled, with a healthy publishing worker. The original bio profile
+loaded through the new profiles API; the public MCP catalogue exposes all
+52 tools with page selection/creation and schedule filters. Public routes and
+database/queue/worker health passed. Multi-page ownership, independent links
+and duplicate-URL handling were verified against a real isolated SQLite store;
+an authenticated browser session was unavailable for a live editor smoke test.
+
+Oracle verification: the existing worker was updated to the same code commit,
+its Prisma client regenerated, migrations confirmed applied, and PM2
+restarted/saved. Production health reports a fresh worker start at
+`2026-10-11T11:24:59.588Z`, with database/queue status OK and zero failed
+queue jobs. The unchanged worker environment remains mode 600. The 1 GB
+shared VM stalled on npm audit metadata; installation completed using
+`npm ci --ignore-scripts --no-audit --no-fund --prefer-offline`, then the
+explicit Prisma generation. No dependency versions changed. The verified
+encrypted backup is retained outside the Git repository under the parent
+workspace’s `.production-backups/2026-10-11-shared-analytics` directory,
+with directory mode 700 and files mode 600.
