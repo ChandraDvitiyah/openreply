@@ -5,6 +5,7 @@ import { importSchema } from "@/lib/automations/import-validation";
 import { facebookAutomationSchema } from "@/lib/automations/facebook-validation";
 import { postInputSchema, mutationSchema } from "@/lib/scheduler/validation";
 import { postKinds } from "@/lib/scheduler/capabilities";
+import { MAX_DR_INPUT_LENGTH } from "@/lib/seo/domains";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 type RouteModule = Partial<Record<Method, (request: NextRequest,
@@ -27,6 +28,7 @@ const webUrl = z.url().refine((s) => ["http:", "https:"].includes(new URL(s).pro
 // This explicit allowlist is the complete product API surface. Agents cannot
 // supply arbitrary routes, server URLs, cookies, identity headers or methods.
 export const AGENT_TOOLS: AgentTool[] = [
+  { name: "check_domain_ratings", description: "SEO authority check: get Ahrefs Domain Rating (DR, 0–100) for one domain or a bulk list of up to 1,000 unique domains. Pass domains or URLs in body.input separated by lines, spaces, commas or semicolons. Uses the server's Ahrefs connection; no social account or user-supplied API key is needed. Returns domain/rating rows, metric/source, duplicates removed and checkedAt. Null means unavailable, not zero. DR is not Moz Domain Authority (DA); do not label these results DA. Attribute results as Domain Rating by Ahrefs (https://ahrefs.com/).", method: "POST", path: "/api/seo/bulk-dr", write: false, input: { body: z.object({ input: z.string().min(1).max(MAX_DR_INPUT_LENGTH).describe("One domain or a list of domains/URLs, for example: ahrefs.com, https://wikipedia.org/wiki/SEO") }).strict() }, load: () => import("@/app/api/seo/bulk-dr/route") },
   { name: "list_instagram_accounts", description: "List connected Instagram accounts and their IDs.", method: "GET", path: "/api/instagram/accounts", input: {}, load: () => import("@/app/api/instagram/accounts/route") },
   { name: "get_instagram_profile", description: "Read profile and connection details for an Instagram account.", method: "GET", path: "/api/instagram/profile", input: { query: accountQuery.optional() }, load: () => import("@/app/api/instagram/profile/route") },
   { name: "list_instagram_posts", description: "List Instagram posts for campaign targeting. Set all=true to load all available posts.", method: "GET", path: "/api/instagram/posts", input: { query: accountQuery.extend({ all: z.boolean().optional(), limit: z.number().int().min(1).max(100).optional() }).optional() }, load: () => import("@/app/api/instagram/posts/route") },

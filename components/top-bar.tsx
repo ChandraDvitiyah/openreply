@@ -23,6 +23,9 @@ const pageTitles: Record<string, string> = {
   "/logs": "DM Logs",
   "/settings": "Settings",
   "/diagnostics": "Diagnostics",
+  "/scheduler": "Schedule",
+  "/agents": "AI agents",
+  "/seo/bulk-dr-checker": "Bulk DR Checker",
 };
 
 interface TopBarProps {
@@ -37,6 +40,7 @@ export default function TopBar({
   instagramAccountCount,
 }: TopBarProps) {
   const pathname = usePathname();
+  const isSeo = pathname === "/seo" || pathname.startsWith("/seo/");
   const title =
     pageTitles[pathname] ??
     (pathname.startsWith("/campaigns/") ? "Campaign" : "Dashboard");
@@ -55,7 +59,9 @@ export default function TopBar({
       </div>
 
       <div className="flex items-center gap-3">
-        {instagramAccountCount > 0 ? (
+        {isSeo ? (
+          <span className="hidden text-[12px] text-[#9e9e9e] sm:block">SEO workspace</span>
+        ) : instagramAccountCount > 0 ? (
           <p className="hidden text-[12px] text-[#9e9e9e] sm:block">
             {instagramAccountCount > 1
               ? `${instagramAccountCount} accounts`

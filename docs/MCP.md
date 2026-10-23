@@ -1,6 +1,6 @@
 # Kult for AI agents
 
-Kult exposes its product features through 52 tools on a remote MCP server at `/api/mcp`.
+Kult exposes its product features through 53 tools on a remote MCP server at `/api/mcp`.
 The server uses the official MCP TypeScript SDK with stateless Streamable HTTP
 and JSON responses. It works across Vercel instances without an in-memory
 session store or another server process.
@@ -238,6 +238,7 @@ redirects with the bearer token. HTTPS is required except on local loopback.
 | Product surface | Agent operations |
 | --- | --- |
 | Workspace | Inspect identity, connected ChatGPT profile, role, scopes and workspace |
+| SEO | `check_domain_ratings`: one or up to 1,000 domains, Ahrefs DR, normalization/deduplication, source and timestamp; read access, no social account required |
 | Social accounts | List accounts/pages, inspect Instagram profile, prepare Meta consent, disconnect individual connections |
 | Instagram campaigns | List/filter, create, edit, pause/resume, delete; all three types; keyword rules, variants, opening DMs, public replies, next/future reels, tracked links and report sharing |
 | Templates and imports | Built-in campaign templates and playbooks; bulk import structured CSV rows with duplicate feedback |
@@ -256,6 +257,17 @@ contains the workflow guide and `kult://tools` contains the credential's catalog
 The server's initialization instructions also contain the workflow guide.
 
 Example instruction for your agent:
+
+> Check the Ahrefs DR of ahrefs.com and wikipedia.org and show a comparison table.
+
+Call `check_domain_ratings` with `{"body":{"input":"ahrefs.com, wikipedia.org"}}`.
+It uses the same server-side Ahrefs connection and validation as the dashboard.
+Results identify the metric as **Domain Rating (DR)** and the source as Ahrefs;
+this is not Moz Domain Authority (DA). See [SEO.md](SEO.md) for setup and output.
+The remote server needs the updated deployment and `AHREFS_API_KEY` before this
+tool is usable there. Local source changes do not update an existing connection.
+
+For Social Media:
 
 > Inspect my connected Instagram account, find the newest reel, create an active
 > LINK campaign with two message variants and a tracked product URL, verify the

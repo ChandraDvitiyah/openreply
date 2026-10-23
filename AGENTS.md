@@ -6,6 +6,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Kult production handoff
 
+For dashboard UI changes, read `design.md` and follow its workspace typography,
+color, icon, spacing and component rules. Keep public marketing and social-preview
+styling separate from authenticated workspace controls.
+
 Before changing or operating this fork, read `docs/OPERATIONS.md` completely.
 It is the canonical record of the live Vercel + Oracle deployment, service
 inventory, secret-handling rules, update procedure, and recovery runbooks.

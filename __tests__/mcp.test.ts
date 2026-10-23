@@ -153,6 +153,48 @@ describe("Kult MCP protocol and product workflows", () => {
     expect(agentContext.getStore()).toBeUndefined();
   });
 
+  it("checks bulk SEO ratings through MCP with read-only access and no social account", async () => {
+    vi.stubEnv("AHREFS_API_KEY", "test-ahrefs-key");
+    mocks.clerkAuth.mockResolvedValue({ userId: null });
+    mocks.accounts.mockResolvedValue([]);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
+      domain_rating: { targets: [{ target: "zero.com", domain_rating: 0 },
+        { target: "example.com", domain_rating: 42 }] },
+    }));
+    try {
+      const client = await connect("read-key");
+      const tool = (await client.listTools()).tools.find((t) => t.name === "check_domain_ratings");
+      expect(tool?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+      const output = await client.callTool({ name: "check_domain_ratings", arguments: {
+        body: { input: "https://EXAMPLE.com/path, example.com; zero.com\nmissing.com" },
+      } });
+      expect(output.isError).toBe(false);
+      expect(output.structuredContent).toMatchObject({ status: 200, duplicates: 1,
+        results: [{ domain: "example.com", rating: 42 }, { domain: "zero.com", rating: 0 },
+          { domain: "missing.com", rating: null }],
+        checkedAt: expect.any(String), metric: { name: "Domain Rating", code: "DR", min: 0, max: 100 },
+        source: { name: "Ahrefs", url: "https://ahrefs.com/", attribution: "Domain Rating by Ahrefs" },
+      });
+      expect(fetchSpy).toHaveBeenCalledOnce();
+      expect(fetchSpy).toHaveBeenCalledWith("https://api.ahrefs.com/v3/public/domain-rating-free?output=json",
+        expect.objectContaining({ body: JSON.stringify({ targets: ["example.com", "zero.com", "missing.com"], version: "dr3" }) }));
+      expect(mocks.accounts).not.toHaveBeenCalled();
+      expect(JSON.stringify(output)).not.toContain("test-ahrefs-key");
+    } finally { fetchSpy.mockRestore(); }
+  });
+
+  it("returns a safe MCP error when the Ahrefs connection is rejected", async () => {
+    vi.stubEnv("AHREFS_API_KEY", "test-ahrefs-key");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("private provider diagnostics", { status: 403 }));
+    try {
+      const client = await connect("read-key");
+      const output = await client.callTool({ name: "check_domain_ratings", arguments: { body: { input: "example.com" } } });
+      expect(output.isError).toBe(true);
+      expect(output.structuredContent).toMatchObject({ status: 503, error: expect.stringContaining("Ahrefs rejected the connection") });
+      expect(JSON.stringify(output)).not.toMatch(/private provider diagnostics|test-ahrefs-key/);
+    } finally { fetchSpy.mockRestore(); }
+  });
+
   it("keeps two concurrent agents isolated and retains ordinary browser authentication", async () => {
     const [one, two] = await Promise.all([connect(), connect("second-key")]);
     const outputs = await Promise.all([one.callTool({ name: "list_instagram_accounts" }), two.callTool({ name: "list_instagram_accounts" })]);
@@ -243,7 +285,7 @@ describe("MCP credential and transport boundaries", () => {
         const response = await POST(request);
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toContain("application/json");
-        expect((await response.json()).result.tools).toHaveLength(52);
+        expect((await response.json()).result.tools).toHaveLength(53);
       }
     });
 
@@ -408,7 +450,7 @@ describe("ChatGPT OAuth account connection", () => {
   it("lets an anonymous SDK client initialize and discover all protected tools without accessing account data", async () => {
     const client = await connect(null);
     const tools = (await client.listTools()).tools;
-    expect(tools).toHaveLength(52);
+    expect(tools).toHaveLength(53);
     expect(tools.some((tool) => tool.name === "create_campaign")).toBe(true);
     expect(tools.every((tool) => (tool._meta?.securitySchemes as { type: string }[])[0].type === "oauth2")).toBe(true);
     const response = await POST(rpc("tools/list", undefined, null));
@@ -553,7 +595,7 @@ describe("ChatGPT OAuth account connection", () => {
       expiration: now + 86400 });
     const token = jwt();
     const client = await connect(token);
-    expect((await client.listTools()).tools).toHaveLength(52);
+    expect((await client.listTools()).tools).toHaveLength(53);
     expect((await client.callTool({ name: "get_connected_profile" })).structuredContent).toMatchObject({ id: "user_one" });
     expect((await client.callTool({ name: "get_workspace" })).structuredContent).toMatchObject({ scopes: ["kult:read", "kult:write"] });
     // The same provider response expires at the Unix-second boundary even if

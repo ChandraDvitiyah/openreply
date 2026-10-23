@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Sidebar from "@/components/sidebar";
 import TopBar from "@/components/top-bar";
 import { DashboardDataCacheProvider } from "@/components/dashboard-data-cache";
@@ -19,16 +19,17 @@ export default function DashboardShell({
   instagramAccountCount,
 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   return (
     <div className="dashboard-ui flex h-screen overflow-hidden bg-[#f7f7f5]">
       <Sidebar
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={closeSidebar}
         workspaceName={workspaceName}
       />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden" inert={sidebarOpen || undefined}>
         <TopBar
           onMenuClick={() => setSidebarOpen(true)}
           instagramUsername={instagramUsername}

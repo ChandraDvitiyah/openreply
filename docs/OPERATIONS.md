@@ -5,7 +5,7 @@ written so that a future maintainer or coding agent can recover from a new
 computer, a lost SSH key, or a deleted worker VM with the Git repository and
 access to the service accounts. It intentionally contains no secret values.
 
-Last verified: **11 October 2026**.
+Last verified: **23 October 2026**.
 
 ## 1. Read this first
 
@@ -133,6 +133,7 @@ contain an old ngrok URL.
 | `CRON_SECRET` | Owner-generated | Vercel cron routes | Long random value |
 | `PERFORMANCE_SYNC_INTERVAL_MS` | Optional app setting | Worker | Default `43200000` (12 hours) |
 | `COMMENT_POLL_INTERVAL_MS` | Optional app setting | Worker | Default `300000` (5 minutes) |
+| `AHREFS_API_KEY` | Ahrefs API v3 settings | Web only | Server-only secret for SEO dashboard and MCP Domain Rating checks |
 
 ### The encryption-key invariant
 
@@ -1217,3 +1218,31 @@ confirmed database and queue OK, zero failed jobs, and a fresh healthy worker
 start at `2026-10-11T11:50:51.298Z`. An authenticated browser session was not
 available; chart interactions were checked in a local component preview with
 the saved production totals, while live filtered API responses were verified.
+
+## 26. Dashboard workspace navigation and SEO — 23 October 2026
+
+The dashboard now has a workspace rail for Social Media and SEO, with contextual
+navigation beside it. Existing Social Media routes remain available. The new
+`/seo/bulk-dr-checker` accepts up to 1,000 domains, normalizes and deduplicates
+input, and retrieves Ahrefs Domain Rating with server-side credentials. Results
+include source attribution, check time, unavailable states and CSV export.
+The same authenticated handler is exposed through MCP `check_domain_ratings`
+with read access; the catalogue now contains 53 tools. Ahrefs DR is explicitly
+distinguished from Moz DA in tool descriptions, workflow guidance and output.
+
+`design.md` records the workspace audit and typography, color, spacing, icon and
+radius rules. New navigation and SEO surfaces follow those rules. This release
+has no schema or dependency changes relative to production commit `73547c5`.
+Only the web app needs `AHREFS_API_KEY`; keep it in Vercel production secrets.
+The Oracle worker does not need this key or a second web server.
+
+Pre-release checks: all 420 existing tests passed, TypeScript and production
+build passed, and ESLint reported no errors (four existing warnings). The
+runtime dependency audit reports 19 pre-existing advisories: five moderate,
+ten high and four critical. Dependency upgrades are outside this UI/SEO release
+and remain outstanding; the unchanged lockfile was not automatically upgraded.
+Production database, queue and worker health were OK. A fresh Turso export was
+restored with integrity OK and matching row counts for all 32 tables, then
+stored encrypted outside Git in the parent workspace's
+`.production-backups/2026-10-23-seo-dashboard` directory (700; files 600).
+No plaintext dump or credentials are committed.

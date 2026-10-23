@@ -138,6 +138,13 @@ select:focus-visible {
   --dashboard-tertiary: #9e9e9e;
   --dashboard-border: #e6e6e3;
   --dashboard-brand: #9ce069;
+  --dashboard-canvas: #f7f7f5;
+  --dashboard-surface: #ffffff;
+  --dashboard-hover: #f3f3f0;
+  --dashboard-brand-soft: #eff8e9;
+  --dashboard-radius-nav: 8px;
+  --dashboard-radius-card: 16px;
+  --dashboard-radius-cta: 999px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
   font-weight: 400;
@@ -177,6 +184,15 @@ select:focus-visible {
   line-height: 1.45 !important;
 }
 
+.dashboard-ui h2,
+.dashboard-ui h3 { font-weight: 500; }
+
+.dashboard-ui .brand-mark {
+  font-size: 14px;
+  font-weight: 500;
+  transform: none;
+}
+
 .dashboard-ui .text-sm { font-size: 13px !important; }
 .dashboard-ui .text-xs,
 .dashboard-ui [class*="text-[9px]"],
@@ -201,8 +217,8 @@ select:focus-visible {
 
 .dashboard-ui .panel {
   border-color: var(--dashboard-border);
-  border-radius: 16px !important;
-  background: #fff;
+  border-radius: var(--dashboard-radius-card) !important;
+  background: var(--dashboard-surface);
   box-shadow: none;
 }
 
@@ -215,18 +231,23 @@ select:focus-visible {
   border-radius: 16px !important;
 }
 
-.dashboard-ui .dashboard-nav-item { border-radius: 8px !important; }
+.dashboard-ui .dashboard-nav-item { border-radius: var(--dashboard-radius-nav) !important; }
 
 .dashboard-ui .button-primary,
 .dashboard-ui .button-secondary,
 .dashboard-ui button[type="submit"],
 .dashboard-ui a[class*="button-"] {
   min-height: 36px;
-  border-radius: 999px !important;
-  padding: 0.55rem 1rem;
+  border-radius: var(--dashboard-radius-cta) !important;
+  padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
+  line-height: 20px;
 }
+
+.dashboard-ui .button-primary:hover { background: #86cd51; transform: none; }
+.dashboard-ui .button-secondary:hover { background: var(--dashboard-hover); border-color: var(--dashboard-border); }
+.dashboard-ui :focus-visible { outline-color: var(--dashboard-ink); }
 
 .dashboard-ui .button-primary {
   background: var(--dashboard-brand);

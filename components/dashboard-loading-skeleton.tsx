@@ -187,7 +187,10 @@ export function PostGridLoadingSkeleton() {
 export function DashboardShellLoadingSkeleton() {
   return (
     <div className="dashboard-ui flex h-screen overflow-hidden bg-[#f7f7f5]" aria-busy="true" aria-label="Loading workspace">
-      <aside className="hidden h-full w-64 shrink-0 border-r border-[#e6e6e3] bg-white lg:flex lg:flex-col">
+      <div className="hidden w-[72px] shrink-0 flex-col items-center gap-5 border-r border-[#e6e6e3] bg-[#f7f7f5] py-4 lg:flex">
+        {[0, 1, 2].map((item) => <SkeletonBone key={item} className="block h-10 w-10 rounded-lg" />)}
+      </div>
+      <aside className="hidden h-full w-[232px] shrink-0 border-r border-[#e6e6e3] bg-white lg:flex lg:flex-col">
         <div className="border-b border-[#e6e6e3] px-5 py-[18px]">
           <div className="flex items-center gap-3">
             <SkeletonBone className="block h-8 w-8 rounded-lg" />
