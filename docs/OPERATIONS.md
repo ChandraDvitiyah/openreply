@@ -5,7 +5,7 @@ written so that a future maintainer or coding agent can recover from a new
 computer, a lost SSH key, or a deleted worker VM with the Git repository and
 access to the service accounts. It intentionally contains no secret values.
 
-Last verified: **23 October 2026**.
+Last verified: **24 October 2026**.
 
 ## 1. Read this first
 
@@ -1219,7 +1219,7 @@ start at `2026-10-11T11:50:51.298Z`. An authenticated browser session was not
 available; chart interactions were checked in a local component preview with
 the saved production totals, while live filtered API responses were verified.
 
-## 26. Dashboard workspace navigation and SEO — 23 October 2026
+## 26. Dashboard workspace navigation and SEO — 24 October 2026
 
 The dashboard now has a workspace rail for Social Media and SEO, with contextual
 navigation beside it. Existing Social Media routes remain available. The new
@@ -1246,3 +1246,22 @@ restored with integrity OK and matching row counts for all 32 tables, then
 stored encrypted outside Git in the parent workspace's
 `.production-backups/2026-10-23-seo-dashboard` directory (700; files 600).
 No plaintext dump or credentials are committed.
+
+Live verification: code commit `91402b0b916a3e050c7fc496e6e3df91e1fd9b9b`
+was pushed to `origin/main` and is served by READY Vercel production deployment
+`dpl_93vMtGznBBjKrDioPKwQZx8Jt8mQ` at `https://kultreply.vercel.app`.
+`AHREFS_API_KEY` is configured as a production-only Vercel secret. The public
+MCP catalogue exposes 53 tools. A temporary isolated Clerk user, empty workspace
+and read-only API key successfully called the live SEO tool without any social
+account: Ahrefs returned DR 91 for ahrefs.com and DR 97 for wikipedia.org.
+URL normalization, duplicate removal, metric attribution and timestamps passed;
+invalid domains and anonymous calls were rejected. The test credential was
+revoked and the isolated workspace/database user and Clerk user were removed.
+
+Oracle was fast-forwarded to the same code commit, Prisma regenerated, and all
+existing migrations confirmed applied (no new migration). The existing worker
+was restarted and saved; `.env.local` remains mode 600. Health confirmed
+database and queue OK, zero failed jobs and a fresh healthy worker start at
+`2026-10-24T05:52:57.188Z`. Public landing/login and protected dashboard/SEO
+sign-in gates passed. Authenticated browser interaction remains covered by the
+local UI checks; no owner browser session was used for this release.
